@@ -1,0 +1,23 @@
+{
+  "slow_queries": [
+    {
+      "query": "select * from orders where customer_id = ? order by created_at desc limit 20",
+      "avg_ms": 320,
+      "p95_ms": 780,
+      "calls": 1840,
+      "rows_examined": 125000,
+      "lock_wait_ms": 14,
+      "recommendation_hint": "Add or validate a composite index on orders(customer_id, created_at desc), avoid select *, and confirm the plan uses an index scan under load."
+    },
+    {
+      "query": "update inventory set reserved = reserved + ? where sku = ?",
+      "avg_ms": 180,
+      "p95_ms": 460,
+      "calls": 940,
+      "rows_examined": 1,
+      "lock_wait_ms": 620,
+      "recommendation_hint": "Investigate row-level contention on hot SKUs, reduce transaction duration, and consider queueing or inventory reservation sharding."
+    }
+  ]
+}
+

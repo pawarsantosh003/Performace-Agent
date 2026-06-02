@@ -1,0 +1,103 @@
+{
+  "application_name": "Retail Checkout Platform",
+  "release_id": "2026.05.29-rc1",
+  "environment": {
+    "name": "pre-prod",
+    "base_url": "https://preprod.example.com",
+    "allow_risky_tests": false,
+    "max_concurrent_users": 1000,
+    "max_duration_seconds": 7200
+  },
+  "web_vitals": {
+    "lcp_p75_ms": 2500,
+    "inp_p75_ms": 200,
+    "cls_p75": 0.1,
+    "fcp_p75_ms": 1800,
+    "ttfb_p75_ms": 800
+  },
+  "monitoring_metrics_file": "sample_monitoring_metrics.json",
+  "database_metrics_file": "sample_database_metrics.json",
+  "scenarios": [
+    {
+      "name": "checkout expected peak load",
+      "test_type": "load",
+      "workload": {
+        "concurrent_users": 250,
+        "duration_seconds": 600,
+        "ramp_up_seconds": 120,
+        "target_tps": 45
+      },
+      "endpoints": [
+        {
+          "name": "product search",
+          "method": "GET",
+          "url": "https://preprod.example.com/api/search?q=shoes",
+          "business_criticality": 4,
+          "sla": {
+            "p95_ms": 450,
+            "p99_ms": 1000,
+            "error_rate_pct": 0.2,
+            "throughput_rps": 25
+          }
+        },
+        {
+          "name": "checkout submit",
+          "method": "POST",
+          "url": "https://preprod.example.com/api/checkout",
+          "business_criticality": 5,
+          "sla": {
+            "p95_ms": 700,
+            "p99_ms": 1500,
+            "error_rate_pct": 0.1,
+            "throughput_rps": 12
+          }
+        }
+      ],
+      "pages": [
+        {
+          "name": "home page",
+          "url": "https://preprod.example.com",
+          "business_criticality": 4
+        },
+        {
+          "name": "checkout page",
+          "url": "https://preprod.example.com/checkout",
+          "business_criticality": 5
+        }
+      ]
+    },
+    {
+      "name": "checkout launch spike",
+      "test_type": "spike",
+      "requires_approval": true,
+      "workload": {
+        "concurrent_users": 750,
+        "duration_seconds": 300,
+        "ramp_up_seconds": 30,
+        "target_tps": 120
+      },
+      "endpoints": [
+        {
+          "name": "checkout submit",
+          "method": "POST",
+          "url": "https://preprod.example.com/api/checkout",
+          "business_criticality": 5,
+          "sla": {
+            "p95_ms": 700,
+            "p99_ms": 1500,
+            "error_rate_pct": 0.1,
+            "throughput_rps": 12
+          }
+        }
+      ],
+      "pages": [
+        {
+          "name": "checkout page",
+          "url": "https://preprod.example.com/checkout",
+          "business_criticality": 5
+        }
+      ]
+    }
+  ]
+}
+

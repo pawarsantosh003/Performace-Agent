@@ -1,0 +1,8 @@
+{
+  "cpu_pct": 86.4,
+  "memory_pct": 78.2,
+  "disk_io_pct": 61.5,
+  "network_pct": 69.1,
+  "error_budget_burn_pct": 4.2
+}
+

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Performance Testing AI Agent</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">MVP Console v2</p>
+        <h1>Performance Testing AI Agent</h1>
+      </div>
+      <div class="topbar-actions">
+        <button id="loadSampleBtn" class="button secondary" type="button" title="Load demo release scenario">
+          <span class="button-icon">+</span>
+          Demo
+        </button>
+        <button id="runBtn" class="button primary" type="button" title="Run assessment">
+          <span class="button-icon">></span>
+          Run Assessment
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="config-panel" aria-label="Agent configuration">
+        <div class="mode-tabs" role="tablist" aria-label="Assessment mode">
+          <button id="quickModeBtn" class="mode-tab active" type="button">Scenario Builder</button>
+          <button id="releaseModeBtn" class="mode-tab" type="button">Full JSON</button>
+        </div>
+
+        <div id="builderForm">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Setup</p>
+              <h2>Build a performance check</h2>
+            </div>
+            <span id="configState" class="pill">Ready</span>
+          </div>
+
+          <div id="validationList" class="validation-list hidden"></div>
+
+          <label class="full-width">
+            Website or API URL
+            <input id="quickUrl" type="url" placeholder="https://example.com" autocomplete="off">
+          </label>
+
+          <div class="form-grid">
+            <label>
+              Application
+              <input id="applicationName" type="text" autocomplete="off">
+            </label>
+            <label>
+              Release
+              <input id="releaseId" type="text" autocomplete="off">
+            </label>
+            <label>
+              Environment
+              <select id="environmentName">
+                <option value="qa">QA</option>
+                <option value="staging">Staging</option>
+                <option value="pre-prod">Pre-Prod</option>
+              </select>
+            </label>
+            <label>
+              Test Type
+              <select id="testType">
+                <option value="smoke">Smoke</option>
+                <option value="load">Load</option>
+                <option value="spike">Spike</option>
+                <option value="stress">Stress</option>
+                <option value="endurance">Endurance</option>
+              </select>
+            </label>
+            <label>
+              Users
+              <input id="concurrentUsers" type="number" min="1" max="1000" step="1">
+            </label>
+            <label>
+              Duration
+              <select id="durationSeconds">
+                <option value="15">15 seconds</option>
+                <option value="30">30 seconds</option>
+                <option value="60">1 minute</option>
+                <option value="300">5 minutes</option>
+              </select>
+            </label>
+            <label>
+              p95 SLA
+              <input id="p95Sla" type="number" min="100" max="60000" step="50">
+            </label>
+            <label>
+              Error Budget
+              <input id="errorRate" type="number" min="0" max="100" step="0.1">
+            </label>
+          </div>
+
+          <div class="controls-row">
+            <label class="toggle">
+              <input id="approveRisky" type="checkbox">
+              <span>Approve spike/stress/endurance</span>
+            </label>
+            <label class="toggle">
+              <input id="useK6" type="checkbox">
+              <span>Use real k6 load run</span>
+            </label>
+          </div>
+
+          <div id="k6Notice" class="notice hidden">
+            Real k6 runs can take the full selected duration. Leave this off for fast UI results.
+          </div>
+        </div>
+
+        <div id="releaseForm" class="hidden">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Advanced</p>
+              <h2>Full release JSON</h2>
+            </div>
+            <button id="syncJsonBtn" class="button secondary small" type="button" title="Update JSON from builder values">
+              Sync
+            </button>
+          </div>
+          <textarea id="configJson" spellcheck="false" aria-label="Agent JSON configuration"></textarea>
+        </div>
+
+        <section class="history-panel" aria-label="Run history">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">History</p>
+              <h2>Saved Runs</h2>
+            </div>
+            <button id="refreshRunsBtn" class="button secondary small" type="button">Refresh</button>
+          </div>
+          <input id="runSearch" class="search-input" type="search" placeholder="Search runs, URLs, releases">
+          <div id="runHistoryList" class="run-history-list"></div>
+        </section>
+      </aside>
+
+      <section class="results-panel" aria-label="Agent results">
+        <div id="emptyState" class="empty-state">
+          <p class="eyebrow">Ready</p>
+          <h2>Run a scenario or open a saved run.</h2>
+          <p>Results, detailed findings, reports, and downloads will appear here.</p>
+        </div>
+
+        <div id="loadingState" class="loading-state hidden">
+          <div class="progress-bar"><span id="progressFill"></span></div>
+          <h2 id="progressTitle">Starting assessment</h2>
+          <p id="loadingText">Preparing run configuration.</p>
+          <ol id="progressSteps" class="progress-steps"></ol>
+        </div>
+
+        <div id="errorState" class="error-state hidden" role="alert"></div>
+
+        <div id="resultsState" class="hidden">
+          <div class="readiness-band">
+            <div>
+              <p class="eyebrow">Readiness Status</p>
+              <h2 id="readinessStatus">-</h2>
+              <p id="runSubtitle" class="run-subtitle"></p>
+            </div>
+            <div class="score-ring">
+              <span id="readinessScore">0</span>
+              <small>/100</small>
+            </div>
+          </div>
+
+          <div id="downloadBar" class="download-bar"></div>
+
+          <div class="result-tabs" role="tablist" aria-label="Result sections">
+            <button class="result-tab active" type="button" data-view="summaryView">Summary</button>
+            <button class="result-tab" type="button" data-view="findingsView">Findings</button>
+            <button class="result-tab" type="button" data-view="metricsView">Metrics</button>
+            <button class="result-tab" type="button" data-view="reportView">Report</button>
+          </div>
+
+          <div id="summaryView" class="result-view">
+            <div id="dimensionGrid" class="metric-grid"></div>
+          </div>
+
+          <div id="findingsView" class="result-view hidden">
+            <div id="findingsList" class="findings-list"></div>
+          </div>
+
+          <div id="metricsView" class="result-view hidden">
+            <div id="scenarioList" class="scenario-list"></div>
+          </div>
+
+          <div id="reportView" class="result-view hidden">
+            <pre id="reportText" class="report-viewer"></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
