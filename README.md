@@ -86,6 +86,26 @@ The UI lets a user:
 - Switch to Full Release mode for advanced JSON scenarios.
 - Review release readiness, findings, scenario metrics, and generated artifacts.
 
+## Test Engines
+
+The UI and CLI now support multiple engines:
+
+| Engine | Requirement | Notes |
+| --- | --- | --- |
+| Fast Assessment | None | Uses local HTTP probe plus deterministic estimates; fastest fallback. |
+| k6 Load Test | `k6` installed on PATH | Generates a k6 script, runs it, parses `summary-export` metrics, and maps thresholds. |
+| Lighthouse Audit | `lighthouse` installed on PATH, or local `npx --no-install lighthouse` | Parses Lighthouse JSON audits into LCP, FCP, CLS, TTFB, and INP/TBT proxy. |
+| k6 + Lighthouse | k6 and Lighthouse installed | Uses real load metrics plus real Lighthouse web metrics. |
+| PageSpeed Insights | Optional `PAGESPEED_API_KEY` environment variable | Calls PageSpeed Insights and parses the Lighthouse result. |
+| WebPageTest | `WEBPAGETEST_API_KEY` environment variable | Submits a WebPageTest run, polls for completion, and parses first-view metrics. |
+| JMeter | `jmeter` installed on PATH | Generates a minimal JMX, runs JMeter non-GUI, and parses JTL results. |
+
+CLI example:
+
+```powershell
+& $py -m perf_agent run --config .\examples\perf_agent_config.json --out .\runs --approve-risky --engine lighthouse
+```
+
 ## Running With k6
 
 If k6 is installed and available on PATH, run:

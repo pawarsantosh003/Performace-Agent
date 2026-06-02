@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .adapters import ApprovalRequired, GuardrailViolation
 from .config import ConfigError, load_config
+from .models import AgentConfig, TestEngine
 from .workflow import PerformanceAgent
 
 
@@ -16,6 +17,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default="runs", help="Output directory for reports and baselines.")
     parser.add_argument("--approve-risky", action="store_true", help="Approve stress, spike, and endurance scenarios.")
     parser.add_argument("--use-k6", action="store_true", help="Use k6 when available; falls back to synthetic results.")
+    parser.add_argument(
+        "--engine",
+        choices=[item.value for item in TestEngine],
+        help="Test engine to use: synthetic, k6, lighthouse, k6_lighthouse, pagespeed, webpagetest, or jmeter.",
+    )
     args = parser.parse_args(argv)
 
     if args.run != "run":
@@ -23,6 +29,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         config = load_config(args.config)
+        if args.engine:
+            config = _with_engine(config, TestEngine(args.engine))
         agent = PerformanceAgent(use_k6=args.use_k6)
         run = agent.run(config, output_root=Path(args.out), approve_risky=args.approve_risky)
     except (ConfigError, ApprovalRequired, GuardrailViolation) as exc:
@@ -37,6 +45,19 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _with_engine(config: AgentConfig, engine: TestEngine) -> AgentConfig:
+    return AgentConfig(
+        application_name=config.application_name,
+        release_id=config.release_id,
+        environment=config.environment,
+        scenarios=config.scenarios,
+        web_vitals=config.web_vitals,
+        monitoring_metrics_file=config.monitoring_metrics_file,
+        database_metrics_file=config.database_metrics_file,
+        previous_baseline_file=config.previous_baseline_file,
+        test_engine=engine,
+    )
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
-

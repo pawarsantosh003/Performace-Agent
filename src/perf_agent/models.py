@@ -28,6 +28,16 @@ class ReadinessStatus(str, Enum):
     BLOCKED = "blocked"
 
 
+class TestEngine(str, Enum):
+    SYNTHETIC = "synthetic"
+    K6 = "k6"
+    LIGHTHOUSE = "lighthouse"
+    K6_LIGHTHOUSE = "k6_lighthouse"
+    PAGESPEED = "pagespeed"
+    WEBPAGETEST = "webpagetest"
+    JMETER = "jmeter"
+
+
 @dataclass(frozen=True)
 class WebVitalThresholds:
     lcp_p75_ms: int = 2500
@@ -98,6 +108,7 @@ class AgentConfig:
     monitoring_metrics_file: str | None = None
     database_metrics_file: str | None = None
     previous_baseline_file: str | None = None
+    test_engine: TestEngine = TestEngine.SYNTHETIC
 
 
 @dataclass

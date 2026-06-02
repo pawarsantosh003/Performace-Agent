@@ -11,6 +11,7 @@ from .models import (
     Environment,
     PageTarget,
     Scenario,
+    TestEngine,
     TestType,
     WebVitalThresholds,
     Workload,
@@ -67,6 +68,7 @@ def parse_config(raw: dict[str, Any], base_dir: Path | None = None) -> AgentConf
         monitoring_metrics_file=_optional_path(raw.get("monitoring_metrics_file"), base_dir),
         database_metrics_file=_optional_path(raw.get("database_metrics_file"), base_dir),
         previous_baseline_file=_optional_path(raw.get("previous_baseline_file"), base_dir),
+        test_engine=TestEngine(str(raw.get("test_engine", "synthetic")).lower()),
     )
 
 
@@ -128,4 +130,3 @@ def _optional_path(value: str | None, base_dir: Path | None) -> str | None:
     if path.is_absolute() or base_dir is None:
         return str(path)
     return str((base_dir / path).resolve())
-

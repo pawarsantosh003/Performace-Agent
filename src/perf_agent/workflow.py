@@ -3,16 +3,16 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .adapters import Guardrail, K6Executor, MetricsLoader, SyntheticExecutor
+from .adapters import Guardrail, MetricsLoader, executor_for
 from .analysis import PerformanceAnalyzer
-from .models import AgentConfig, AgentRun
+from .models import AgentConfig, AgentRun, TestEngine
 from .reporting import ReportWriter
 
 
 class PerformanceAgent:
     def __init__(self, use_k6: bool = False) -> None:
         self.guardrail = Guardrail()
-        self.executor = K6Executor() if use_k6 else SyntheticExecutor()
+        self.engine_override = TestEngine.K6 if use_k6 else None
         self.metrics_loader = MetricsLoader()
         self.analyzer = PerformanceAnalyzer()
         self.report_writer = ReportWriter()
@@ -28,7 +28,8 @@ class PerformanceAgent:
 
         for index, scenario in enumerate(config.scenarios):
             self.guardrail.validate(config, scenario, approve_risky=approve_risky)
-            result = self.executor.execute(config, scenario, run_id=run_id, output_dir=output_dir)
+            engine = self.engine_override or config.test_engine
+            result = executor_for(engine).execute(config, scenario, run_id=run_id, output_dir=output_dir)
             if shared_infra:
                 result.infra_metrics = shared_infra
             if index == 0:

@@ -75,6 +75,18 @@
               </select>
             </label>
             <label>
+              Test Engine
+              <select id="testEngine">
+                <option value="synthetic">Fast Assessment</option>
+                <option value="k6">k6 Load Test</option>
+                <option value="lighthouse">Lighthouse Audit</option>
+                <option value="k6_lighthouse">k6 + Lighthouse</option>
+                <option value="pagespeed">PageSpeed Insights</option>
+                <option value="webpagetest">WebPageTest</option>
+                <option value="jmeter">JMeter</option>
+              </select>
+            </label>
+            <label>
               Users
               <input id="concurrentUsers" type="number" min="1" max="1000" step="1">
             </label>
@@ -102,14 +114,10 @@
               <input id="approveRisky" type="checkbox">
               <span>Approve spike/stress/endurance</span>
             </label>
-            <label class="toggle">
-              <input id="useK6" type="checkbox">
-              <span>Use real k6 load run</span>
-            </label>
           </div>
 
-          <div id="k6Notice" class="notice hidden">
-            Real k6 runs can take the full selected duration. Leave this off for fast UI results.
+          <div id="engineNotice" class="notice hidden">
+            Real engines depend on local tools or API keys and can take longer than Fast Assessment.
           </div>
         </div>
 

@@ -4,15 +4,15 @@ const fields = {
   releaseId: document.querySelector("#releaseId"),
   environmentName: document.querySelector("#environmentName"),
   testType: document.querySelector("#testType"),
+  testEngine: document.querySelector("#testEngine"),
   concurrentUsers: document.querySelector("#concurrentUsers"),
   durationSeconds: document.querySelector("#durationSeconds"),
   p95Sla: document.querySelector("#p95Sla"),
   errorRate: document.querySelector("#errorRate"),
   approveRisky: document.querySelector("#approveRisky"),
-  useK6: document.querySelector("#useK6"),
   configJson: document.querySelector("#configJson"),
   configState: document.querySelector("#configState"),
-  k6Notice: document.querySelector("#k6Notice"),
+  engineNotice: document.querySelector("#engineNotice"),
   validationList: document.querySelector("#validationList"),
   runSearch: document.querySelector("#runSearch")
 };
@@ -28,10 +28,13 @@ document.querySelector("#runBtn").addEventListener("click", runAssessment);
 document.querySelector("#syncJsonBtn").addEventListener("click", () => writeConfig(buildBuilderConfig()));
 document.querySelector("#refreshRunsBtn").addEventListener("click", loadRunHistory);
 fields.runSearch.addEventListener("input", debounce(loadRunHistory, 250));
-fields.useK6.addEventListener("change", () => fields.k6Notice.classList.toggle("hidden", !fields.useK6.checked));
+fields.testEngine.addEventListener("change", () => {
+  fields.engineNotice.classList.toggle("hidden", fields.testEngine.value === "synthetic");
+  if (mode === "builder") writeConfig(buildBuilderConfig());
+});
 fields.configJson.addEventListener("input", () => setConfigState("Edited"));
 
-for (const key of ["quickUrl", "applicationName", "releaseId", "environmentName", "testType", "concurrentUsers", "durationSeconds", "p95Sla", "errorRate"]) {
+for (const key of ["quickUrl", "applicationName", "releaseId", "environmentName", "testType", "testEngine", "concurrentUsers", "durationSeconds", "p95Sla", "errorRate"]) {
   fields[key].addEventListener("input", () => {
     validateBuilder(false);
     if (mode === "builder") writeConfig(buildBuilderConfig());
@@ -52,12 +55,12 @@ function setDefaults() {
   fields.releaseId.value = new Date().toISOString().slice(0, 10);
   fields.environmentName.value = "pre-prod";
   fields.testType.value = "smoke";
+  fields.testEngine.value = "synthetic";
   fields.concurrentUsers.value = 25;
   fields.durationSeconds.value = 30;
   fields.p95Sla.value = 1200;
   fields.errorRate.value = 0.5;
   fields.approveRisky.checked = false;
-  fields.useK6.checked = false;
 }
 
 function setMode(nextMode) {
@@ -90,6 +93,7 @@ function populateFormFromConfig(config) {
   fields.releaseId.value = config.release_id || "";
   fields.environmentName.value = config.environment?.name || "pre-prod";
   fields.testType.value = scenario.test_type || "smoke";
+  fields.testEngine.value = config.test_engine || "synthetic";
   fields.concurrentUsers.value = scenario.workload?.concurrent_users || 25;
   fields.durationSeconds.value = String(Math.min(Number(scenario.workload?.duration_seconds || 30), 300));
   fields.p95Sla.value = endpoint.sla?.p95_ms || 1200;
@@ -110,6 +114,7 @@ function buildBuilderConfig() {
   return {
     application_name: appName,
     release_id: releaseId,
+    test_engine: fields.testEngine.value,
     environment: {
       name: fields.environmentName.value,
       base_url: url,
@@ -222,7 +227,7 @@ async function runAssessment() {
   setRunning(true);
   clearError();
   showOnly("loadingState");
-  startProgress(fields.useK6.checked);
+  startProgress(fields.testEngine.value);
 
   try {
     const response = await fetch("/api/run", {
@@ -231,7 +236,7 @@ async function runAssessment() {
       body: JSON.stringify({
         config,
         approve_risky: fields.approveRisky.checked,
-        use_k6: fields.useK6.checked
+        use_k6: fields.testEngine.value === "k6"
       })
     });
     const payload = await response.json();
@@ -249,11 +254,12 @@ async function runAssessment() {
   }
 }
 
-function startProgress(isK6) {
+function startProgress(engine) {
+  const realEngine = engine !== "synthetic";
   const steps = [
     "Validating inputs",
     "Preparing scenario",
-    isK6 ? "Executing k6 run" : "Running fast URL probe",
+    realEngine ? `Executing ${engineLabel(engine)}` : "Running fast URL probe",
     "Analyzing Web/API signals",
     "Scoring release readiness",
     "Writing report and artifacts"
@@ -263,7 +269,7 @@ function startProgress(isK6) {
   progressTimer = setInterval(() => {
     index = Math.min(index + 1, steps.length - 1);
     renderProgress(steps, index);
-  }, isK6 ? 1800 : 450);
+  }, realEngine ? 1800 : 450);
 }
 
 function renderProgress(steps, activeIndex) {
@@ -311,7 +317,7 @@ function renderRunHistory(runs) {
     button.className = "run-history-item";
     button.innerHTML = `
       <span class="history-title">${escapeHtml(run.application_name || run.run_id)}</span>
-      <span class="history-meta">${escapeHtml(run.release_id || "")} | ${escapeHtml(run.test_type || "")} | ${escapeHtml(run.primary_url || "")}</span>
+      <span class="history-meta">${escapeHtml(run.release_id || "")} | ${escapeHtml(run.test_type || "")} | ${escapeHtml(run.test_engine || "")} | ${escapeHtml(run.primary_url || "")}</span>
       <span class="status-row">
         <span class="status-pill ${escapeHtml(readiness.status || "unknown")}">${escapeHtml(statusLabel(readiness.status))}</span>
         <span>${escapeHtml(String(readiness.score ?? "n/a"))}/100</span>
@@ -321,6 +327,18 @@ function renderRunHistory(runs) {
     button.addEventListener("click", () => loadRunDetails(run.run_id));
     list.appendChild(button);
   });
+}
+
+function engineLabel(engine) {
+  return {
+    synthetic: "Fast Assessment",
+    k6: "k6",
+    lighthouse: "Lighthouse",
+    k6_lighthouse: "k6 + Lighthouse",
+    pagespeed: "PageSpeed Insights",
+    webpagetest: "WebPageTest",
+    jmeter: "JMeter"
+  }[engine] || engine;
 }
 
 async function loadRunDetails(runId, knownPayload = null) {

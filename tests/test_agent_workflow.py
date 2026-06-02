@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from perf_agent.config import load_config
+from perf_agent.models import TestEngine
 from perf_agent.workflow import PerformanceAgent
 
 
@@ -26,6 +27,11 @@ class AgentWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(RuntimeError, "needs approval"):
                 agent.run(config, output_root=Path(tmp), approve_risky=False)
+
+    def test_sample_config_declares_test_engine(self) -> None:
+        config = load_config("examples/perf_agent_config.json")
+
+        self.assertEqual(config.test_engine, TestEngine.SYNTHETIC)
 
 
 if __name__ == "__main__":

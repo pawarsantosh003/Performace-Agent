@@ -172,6 +172,7 @@ def _manifest(run: AgentRun) -> dict[str, Any]:
         "base_url": run.config.environment.base_url,
         "primary_url": first_page.url if first_page else first_endpoint.url if first_endpoint else run.config.environment.base_url,
         "test_type": first_scenario.test_type.value if first_scenario else "",
+        "test_engine": run.config.test_engine.value,
         "concurrent_users": first_scenario.workload.concurrent_users if first_scenario else 0,
         "duration_seconds": first_scenario.workload.duration_seconds if first_scenario else 0,
         "run_id": run.run_id,

@@ -1,6 +1,7 @@
 {
   "application_name": "Retail Checkout Platform",
   "release_id": "2026.05.29-rc1",
+  "test_engine": "synthetic",
   "environment": {
     "name": "pre-prod",
     "base_url": "https://preprod.example.com",
@@ -100,4 +101,3 @@
     }
   ]
 }
-
