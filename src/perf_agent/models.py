@@ -96,6 +96,32 @@ class Environment:
     allow_risky_tests: bool = False
     max_concurrent_users: int = 1000
     max_duration_seconds: int = 7200
+    max_target_tps: float | None = None
+    allowed_hosts: list[str] = field(default_factory=list)
+    allowed_url_prefixes: list[str] = field(default_factory=list)
+    test_window_start: str | None = None
+    test_window_end: str | None = None
+
+
+@dataclass(frozen=True)
+class MonitoringConnector:
+    name: str
+    connector_type: str
+    endpoint: str | None = None
+    api_key: str | None = None
+    query: str | None = None
+    dashboard_url: str | None = None
+    trace_url_template: str | None = None
+    options: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DatabaseConnector:
+    name: str
+    connector_type: str
+    source_file: str | None = None
+    connection_string: str | None = None
+    options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -107,6 +133,8 @@ class AgentConfig:
     web_vitals: WebVitalThresholds = field(default_factory=WebVitalThresholds)
     monitoring_metrics_file: str | None = None
     database_metrics_file: str | None = None
+    monitoring_connectors: list[MonitoringConnector] = field(default_factory=list)
+    database_connectors: list[DatabaseConnector] = field(default_factory=list)
     previous_baseline_file: str | None = None
     test_engine: TestEngine = TestEngine.SYNTHETIC
 
@@ -185,6 +213,14 @@ class Finding:
     solution_steps: list[str] = field(default_factory=list)
     owner_actions: list[str] = field(default_factory=list)
     documentation_links: list[str] = field(default_factory=list)
+    ai_rca_summary: str = ""
+    ai_recommendation: str | None = None
+    ai_validation_plan: str | None = None
+    ai_confidence_pct: float = 0.0
+    ai_evidence_citations: list[str] = field(default_factory=list)
+    ai_prompt_template: str = ""
+    ai_guardrail_failures: list[str] = field(default_factory=list)
+    ai_structured_output: dict[str, Any] = field(default_factory=dict)
     score: float = 0.0
 
 
@@ -204,3 +240,5 @@ class AgentRun:
     findings: list[Finding] = field(default_factory=list)
     readiness: ReadinessScore | None = None
     artifacts: dict[str, str] = field(default_factory=dict)
+    connector_annotations: dict[str, list[dict[str, str]]] = field(default_factory=dict)
+    historical_context: dict[str, Any] = field(default_factory=dict)

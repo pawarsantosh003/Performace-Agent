@@ -14,12 +14,157 @@ const fields = {
   configState: document.querySelector("#configState"),
   engineNotice: document.querySelector("#engineNotice"),
   validationList: document.querySelector("#validationList"),
-  runSearch: document.querySelector("#runSearch")
+  runSearch: document.querySelector("#runSearch"),
+  loginUsername: document.querySelector("#loginUsername"),
+  loginPassword: document.querySelector("#loginPassword"),
+  loginBtn: document.querySelector("#loginBtn"),
+  logoutBtn: document.querySelector("#logoutBtn"),
+  userBadge: document.querySelector("#userBadge"),
+  loginOverlay: document.querySelector("#loginOverlay"),
+  loginForm: document.querySelector("#loginForm"),
+  signupForm: document.querySelector("#signupForm"),
+  toggleSignupBtn: document.querySelector("#toggleSignupBtn"),
+  toggleLoginBtn: document.querySelector("#toggleLoginBtn"),
+  signupEmail: document.querySelector("#signupEmail"),
+  signupPassword: document.querySelector("#signupPassword"),
+  signupPasswordConfirm: document.querySelector("#signupPasswordConfirm"),
+  signupBtn: document.querySelector("#signupBtn")
 };
 
 let mode = "builder";
 let currentConfig = null;
 let progressTimer = null;
+const auth = { currentUser: null };
+
+async function loadSession() {
+  try {
+    const response = await fetch("/api/session");
+    if (!response.ok) {
+      auth.currentUser = null;
+    } else {
+      const payload = await response.json();
+      auth.currentUser = payload.authenticated ? payload : null;
+    }
+  } catch (error) {
+    auth.currentUser = null;
+  }
+  updateAuthUI();
+}
+
+function updateAuthUI() {
+  const signedIn = auth.currentUser && auth.currentUser.authenticated;
+  fields.loginOverlay.classList.toggle("hidden", signedIn);
+  document.getElementById("appShell").classList.toggle("hidden", !signedIn);
+  fields.logoutBtn.classList.toggle("hidden", !signedIn);
+  fields.userBadge.classList.toggle("hidden", !signedIn);
+  if (signedIn) {
+    fields.userBadge.textContent = `${auth.currentUser.username} (${auth.currentUser.role})`;
+    const canApprove = ["approver", "admin"].includes(auth.currentUser.role);
+    fields.approveRisky.disabled = !canApprove;
+    fields.approveRisky.parentElement.classList.toggle("muted", !canApprove);
+    if (!canApprove) {
+      fields.approveRisky.checked = false;
+    }
+  } else {
+    fields.approveRisky.disabled = true;
+    fields.approveRisky.checked = false;
+  }
+}
+
+async function login() {
+  clearError();
+  const username = fields.loginUsername.value.trim();
+  const password = fields.loginPassword.value;
+  if (!username || !password) {
+    showError("Enter both username and password.");
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Login failed.");
+    }
+    auth.currentUser = payload;
+    fields.loginPassword.value = "";
+    loadSession();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+async function signup() {
+  clearError();
+  const email = fields.signupEmail.value.trim();
+  const password = fields.signupPassword.value;
+  const passwordConfirm = fields.signupPasswordConfirm.value;
+
+  if (!email || !password) {
+    showError("Email and password are required.");
+    return;
+  }
+
+  if (password !== passwordConfirm) {
+    showError("Passwords do not match.");
+    return;
+  }
+
+  if (password.length < 6) {
+    showError("Password must be at least 6 characters long.");
+    return;
+  }
+
+  if (!email.includes("@")) {
+    showError("Please enter a valid email address.");
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, password_confirm: passwordConfirm }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Signup failed.");
+    }
+    auth.currentUser = payload;
+    fields.signupEmail.value = "";
+    fields.signupPassword.value = "";
+    fields.signupPasswordConfirm.value = "";
+    loadSession();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+function toggleAuthForm(form) {
+  const isLogin = form === "login";
+  fields.loginForm.classList.toggle("hidden", !isLogin);
+  fields.signupForm.classList.toggle("hidden", isLogin);
+  clearError();
+  fields.loginUsername.value = "";
+  fields.loginPassword.value = "";
+  fields.signupEmail.value = "";
+  fields.signupPassword.value = "";
+  fields.signupPasswordConfirm.value = "";
+}
+
+async function logout() {
+  try {
+    await fetch("/api/logout", { method: "POST" });
+  } catch {
+    // ignore network errors during logout
+  }
+  auth.currentUser = null;
+  updateAuthUI();
+}
 
 document.querySelector("#quickModeBtn").addEventListener("click", () => setMode("builder"));
 document.querySelector("#releaseModeBtn").addEventListener("click", () => setMode("json"));
@@ -27,6 +172,11 @@ document.querySelector("#loadSampleBtn").addEventListener("click", loadSample);
 document.querySelector("#runBtn").addEventListener("click", runAssessment);
 document.querySelector("#syncJsonBtn").addEventListener("click", () => writeConfig(buildBuilderConfig()));
 document.querySelector("#refreshRunsBtn").addEventListener("click", loadRunHistory);
+fields.loginBtn.addEventListener("click", login);
+fields.signupBtn.addEventListener("click", signup);
+fields.logoutBtn.addEventListener("click", logout);
+fields.toggleSignupBtn.addEventListener("click", () => toggleAuthForm("signup"));
+fields.toggleLoginBtn.addEventListener("click", () => toggleAuthForm("login"));
 fields.runSearch.addEventListener("input", debounce(loadRunHistory, 250));
 fields.testEngine.addEventListener("change", () => {
   fields.engineNotice.classList.toggle("hidden", fields.testEngine.value === "synthetic");
@@ -47,6 +197,7 @@ document.querySelectorAll(".result-tab").forEach((button) => {
 
 setDefaults();
 writeConfig(buildBuilderConfig());
+loadSession();
 loadRunHistory();
 
 function setDefaults() {
@@ -218,6 +369,19 @@ function writeConfig(config) {
 }
 
 async function runAssessment() {
+  if (!auth.currentUser || !auth.currentUser.authenticated) {
+    showError("Sign in before running an assessment.");
+    return;
+  }
+  const role = auth.currentUser.role;
+  if (role === "viewer") {
+    showError("Viewer role cannot start assessments. Contact an Administrator.");
+    return;
+  }
+  if (fields.approveRisky.checked && !["approver", "admin"].includes(role)) {
+    showError("Only Approver or Admin roles may authorize risky test runs.");
+    return;
+  }
   const errors = mode === "builder" ? validateBuilder(true) : [];
   if (errors.length) return;
   const config = mode === "builder" ? buildBuilderConfig() : parseConfigJson();
@@ -369,6 +533,7 @@ function renderResults(payload) {
   renderDownloads(payload.artifacts || {});
   renderDimensions(readiness.dimensions || {});
   renderFindings(payload.findings || []);
+  renderEvidence(payload);
   renderScenarios(payload.scenario_results || []);
   document.querySelector("#reportText").textContent = payload.report_text || "Open the report artifact to view report text.";
   showResultView("summaryView");
@@ -382,7 +547,8 @@ function renderDownloads(artifacts) {
     baseline: "Baseline",
     backlog: "Backlog",
     readiness: "Readiness JSON",
-    raw: "Raw Results"
+    raw: "Raw Results",
+    connectors: "Connectors"
   };
   for (const [name, label] of Object.entries(labels)) {
     if (!artifacts[name]) continue;
@@ -401,6 +567,90 @@ function renderDimensions(dimensions) {
   for (const [name, score] of Object.entries(dimensions)) {
     grid.appendChild(tile(titleCase(name), Number(score).toFixed(1)));
   }
+}
+
+function renderEvidence(payload) {
+  const findings = payload.findings || [];
+  const apiFindings = findings.filter((finding) => finding.category === "api");
+  const dbFindings = findings.filter((finding) => finding.category === "database");
+  const connectors = payload.connector_annotations || {};
+
+  renderSummaryEvidence(apiFindings, dbFindings, connectors);
+  renderFailingEndpoints(apiFindings);
+  renderDatabaseEvidence(dbFindings);
+  renderConnectorEvidence(connectors);
+}
+
+function renderSummaryEvidence(apiFindings, dbFindings, connectors) {
+  const grid = document.querySelector("#summaryEvidenceGrid");
+  grid.innerHTML = "";
+  const connectorCount = Object.values(connectors).reduce((sum, items) => sum + (Array.isArray(items) ? items.length : 0), 0);
+  grid.appendChild(summaryCard("Failing endpoints", String(apiFindings.length), "Open Evidence for endpoint-specific fixes."));
+  grid.appendChild(summaryCard("DB bottlenecks", String(dbFindings.length), "Imported slow queries and plan evidence."));
+  grid.appendChild(summaryCard("Observability links", String(connectorCount), "Grafana, traces, and connector status."));
+}
+
+function renderFailingEndpoints(apiFindings) {
+  const list = document.querySelector("#failingEndpointList");
+  list.innerHTML = "";
+  if (!apiFindings.length) {
+    list.appendChild(emptyLine("No endpoint SLA or error-rate failures detected."));
+    return;
+  }
+  apiFindings.forEach((finding) => {
+    list.appendChild(evidenceCard(finding.title, finding.recommendation, finding.evidence || [], finding.solution_steps || []));
+  });
+}
+
+function renderDatabaseEvidence(dbFindings) {
+  const list = document.querySelector("#databaseEvidenceList");
+  list.innerHTML = "";
+  if (!dbFindings.length) {
+    list.appendChild(emptyLine("No database bottleneck evidence imported for this run."));
+    return;
+  }
+  dbFindings.forEach((finding) => {
+    list.appendChild(evidenceCard(finding.title, finding.recommendation, finding.evidence || [], finding.solution_steps || []));
+  });
+}
+
+function renderConnectorEvidence(connectors) {
+  const list = document.querySelector("#connectorEvidenceList");
+  list.innerHTML = "";
+  const rows = [];
+  for (const item of connectors.connector_status || []) {
+    rows.push({
+      title: `${item.name} (${item.type})`,
+      body: item.status,
+      links: []
+    });
+  }
+  for (const item of connectors.grafana_dashboards || []) {
+    rows.push({
+      title: `Grafana: ${item.name}`,
+      body: "Dashboard linked for the test window and release run.",
+      links: [item.url]
+    });
+  }
+  for (const item of connectors.trace_links || []) {
+    rows.push({
+      title: `Trace correlation: ${item.name}`,
+      body: "Trace search uses the run ID so engineers can inspect slow requests.",
+      links: [item.url]
+    });
+  }
+  for (const item of connectors.external_connectors || []) {
+    rows.push({
+      title: `${item.name} (${item.type})`,
+      body: item.note,
+      links: []
+    });
+  }
+  if (!rows.length) {
+    list.appendChild(emptyLine("No observability connectors configured for this run."));
+    return;
+  }
+  rows.forEach((row) => list.appendChild(connectorCard(row)));
 }
 
 function renderFindings(findings) {
@@ -436,6 +686,36 @@ function tile(label, value) {
   return item;
 }
 
+function summaryCard(label, value, note) {
+  const item = document.createElement("div");
+  item.className = "summary-card";
+  item.innerHTML = `<strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span><p>${escapeHtml(note)}</p>`;
+  return item;
+}
+
+function evidenceCard(title, recommendation, evidence, solutionSteps) {
+  const item = document.createElement("article");
+  item.className = "evidence-card";
+  item.innerHTML = `
+    <h4>${escapeHtml(title)}</h4>
+    <p>${escapeHtml(recommendation || "Review the supporting telemetry and validate the suspected bottleneck.")}</p>
+    ${detailBlock("Evidence", evidence)}
+    ${detailBlock("Relevant solutions", solutionSteps)}
+  `;
+  return item;
+}
+
+function connectorCard(row) {
+  const item = document.createElement("article");
+  item.className = "evidence-card";
+  item.innerHTML = `
+    <h4>${escapeHtml(row.title)}</h4>
+    <p>${escapeHtml(row.body || "Configured")}</p>
+    ${linkBlock("Open", row.links || [])}
+  `;
+  return item;
+}
+
 function findingCard(finding, priority) {
   const item = document.createElement("button");
   item.type = "button";
@@ -461,6 +741,7 @@ function findingCard(finding, priority) {
     </div>
     <div class="finding-detail" hidden>
       ${detailBlock("Likely root cause", [finding.likely_cause || "More telemetry is needed to isolate the exact root cause."])}
+      ${aiRcaBlock(finding)}
       ${detailBlock("Recommended solution steps", finding.solution_steps || [])}
       ${detailBlock("Owner actions", finding.owner_actions || [])}
       ${detailBlock("Validation plan", [finding.validation_plan])}
@@ -475,6 +756,24 @@ function findingCard(finding, priority) {
     item.querySelector(".finding-detail").hidden = expanded;
   });
   return item;
+}
+
+function aiRcaBlock(finding) {
+  if (!finding.ai_rca_summary && !finding.ai_confidence_pct) return "";
+  return `
+    <section class="ai-rca-block">
+      <h4>AI RCA</h4>
+      <ul>
+        <li>Template: ${escapeHtml(finding.ai_prompt_template || "not recorded")}</li>
+        <li>Confidence: ${escapeHtml(String(Number(finding.ai_confidence_pct || 0).toFixed(1)))}%</li>
+        <li>${escapeHtml(finding.ai_rca_summary || "No AI RCA available.")}</li>
+        <li>Recommendation: ${escapeHtml(finding.ai_recommendation || finding.recommendation || "")}</li>
+        <li>Validation: ${escapeHtml(finding.ai_validation_plan || finding.validation_plan || "")}</li>
+      </ul>
+      ${detailBlock("AI evidence citations", finding.ai_evidence_citations || [])}
+      ${detailBlock("Guardrail notes", finding.ai_guardrail_failures || [])}
+    </section>
+  `;
 }
 
 function detailBlock(title, items) {

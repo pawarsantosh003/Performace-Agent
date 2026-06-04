@@ -1,0 +1,10 @@
+# Time: 2026-06-04T09:30:12.123456Z
+# User@Host: app[app] @ checkout-service []
+# Query_time: 1.820 Lock_time: 0.040 Rows_sent: 20 Rows_examined: 180000
+SET timestamp=1780565412;
+select * from orders where customer_id = 42 order by created_at desc limit 20;
+# Time: 2026-06-04T09:31:12.123456Z
+# User@Host: app[app] @ checkout-service []
+# Query_time: 0.260 Lock_time: 0.620 Rows_sent: 1 Rows_examined: 1
+SET timestamp=1780565472;
+update inventory set reserved = reserved + 1 where sku = 'HOT-SKU';

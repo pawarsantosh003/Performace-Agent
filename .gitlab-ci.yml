@@ -1,0 +1,38 @@
+stages:
+  - test
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
+
+readiness_gate:
+  image: python:3.11
+  stage: test
+  script:
+    - python -m pip install --upgrade pip
+    - python -m pip install -e .
+    - python -m perf_agent run --config examples/perf_agent_config.json --out runs --approve-risky --release-gate
+    - |
+      if [ -n "$CI_MERGE_REQUEST_IID" ] && [ -n "$GITLAB_TOKEN" ]; then
+        python - <<'PY'
+import json
+import os
+from pathlib import Path
+import urllib.request
+
+run_dir = next(Path('runs').iterdir())
+body = '# Performance Readiness Gate\n\n' + (run_dir / 'readiness_summary.md').read_text()
+payload = json.dumps({'body': body})
+url = f"{os.environ['CI_API_V4_URL']}/projects/{os.environ['CI_PROJECT_ID']}/merge_requests/{os.environ['CI_MERGE_REQUEST_IID']}/notes"
+request = urllib.request.Request(url, data=payload.encode('utf-8'), headers={
+    'PRIVATE-TOKEN': os.environ['GITLAB_TOKEN'],
+    'Content-Type': 'application/json',
+})
+with urllib.request.urlopen(request) as response:
+    print(response.read().decode('utf-8'))
+PY
+      fi
+  artifacts:
+    paths:
+      - runs/
+    expire_in: 1 week

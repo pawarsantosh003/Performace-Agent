@@ -71,6 +71,90 @@ h2 {
   gap: 10px;
 }
 
+.user-badge {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 12px;
+  background: #eef8fb;
+  color: var(--primary-strong);
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(24, 32, 44, 0.55);
+  z-index: 20;
+}
+
+/* Ensure login overlay is always visible during startup/debug */
+.login-overlay.force-visible {
+  display: grid !important;
+  z-index: 9999 !important;
+  background: rgba(24, 32, 44, 0.6) !important;
+}
+
+.login-card {
+  width: min(440px, calc(100vw - 40px));
+  padding: 28px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 18px 60px rgba(27, 39, 63, 0.18);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+}
+
+.login-card h2 {
+  margin-top: 0;
+}
+
+.login-card label {
+  margin-top: 14px;
+}
+
+.login-note {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.auth-toggle {
+  margin-top: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 700;
+  text-decoration: none;
+  padding: 0;
+  font-size: 12px;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+#loginForm,
+#signupForm {
+  transition: opacity 0.2s ease;
+}
+
+#signupForm.hidden,
+#loginForm.hidden {
+  display: none;
+}
+
 .button {
   min-height: 38px;
   border: 1px solid transparent;
@@ -537,6 +621,13 @@ textarea {
   gap: 10px;
 }
 
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
 .download-bar {
   margin-bottom: 14px;
   border: 1px solid var(--border);
@@ -594,6 +685,58 @@ textarea {
   border-radius: 8px;
   padding: 12px;
   background: #fff;
+}
+
+.summary-card,
+.evidence-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fff;
+}
+
+.summary-card strong {
+  display: block;
+  font-size: 24px;
+}
+
+.summary-card span {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.summary-card p,
+.evidence-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.evidence-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.evidence-layout h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.evidence-list {
+  display: grid;
+  gap: 10px;
+}
+
+.evidence-card h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.evidence-card section {
+  margin-top: 12px;
+}
+
+.evidence-card h4 + p {
+  font-size: 13px;
 }
 
 .metric-tile strong {
@@ -822,6 +965,10 @@ textarea {
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .evidence-grid {
+    grid-template-columns: 1fr;
   }
 
   .finding-detail {

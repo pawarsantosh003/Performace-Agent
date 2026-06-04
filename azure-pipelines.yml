@@ -1,0 +1,31 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- checkout: self
+
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.11'
+
+- script: |
+    python -m pip install --upgrade pip
+    python -m pip install -e .
+    python -m perf_agent run --config examples/perf_agent_config.json --out runs --approve-risky --release-gate
+  displayName: 'Run Performance Readiness Gate'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'runs'
+    ArtifactName: 'performance-artifacts'
+    publishLocation: 'Container'

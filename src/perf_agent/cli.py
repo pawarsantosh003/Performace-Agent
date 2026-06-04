@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .adapters import ApprovalRequired, GuardrailViolation
 from .config import ConfigError, load_config
-from .models import AgentConfig, TestEngine
+from .models import AgentConfig, ReadinessStatus, TestEngine
 from .workflow import PerformanceAgent
 
 
@@ -21,6 +21,11 @@ def main(argv: list[str] | None = None) -> int:
         "--engine",
         choices=[item.value for item in TestEngine],
         help="Test engine to use: synthetic, k6, lighthouse, k6_lighthouse, pagespeed, webpagetest, or jmeter.",
+    )
+    parser.add_argument(
+        "--release-gate",
+        action="store_true",
+        help="Enable CI release gate exit codes: 0=green, 1=amber, 2=red/blocked.",
     )
     args = parser.parse_args(argv)
 
@@ -42,6 +47,10 @@ def main(argv: list[str] | None = None) -> int:
     print("Artifacts:")
     for name, path in run.artifacts.items():
         print(f"  {name}: {path}")
+    if args.release_gate:
+        exit_code = _exit_code_for_readiness(run.readiness.status)
+        print(f"Release gate status: {run.readiness.status.value.upper()} -> exit code {exit_code}")
+        return exit_code
     return 0
 
 
@@ -57,6 +66,14 @@ def _with_engine(config: AgentConfig, engine: TestEngine) -> AgentConfig:
         previous_baseline_file=config.previous_baseline_file,
         test_engine=engine,
     )
+
+
+def _exit_code_for_readiness(status: ReadinessStatus) -> int:
+    if status == ReadinessStatus.GREEN:
+        return 0
+    if status == ReadinessStatus.AMBER:
+        return 1
+    return 2
 
 
 if __name__ == "__main__":

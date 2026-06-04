@@ -4,25 +4,29 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Performance Testing AI Agent</title>
+    <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23176b87'/><text x='8' y='11' font-size='10' text-anchor='middle' fill='white' font-family='Arial'>PA</text></svg>">
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">MVP Console v2</p>
-        <h1>Performance Testing AI Agent</h1>
-      </div>
-      <div class="topbar-actions">
-        <button id="loadSampleBtn" class="button secondary" type="button" title="Load demo release scenario">
-          <span class="button-icon">+</span>
-          Demo
-        </button>
-        <button id="runBtn" class="button primary" type="button" title="Run assessment">
-          <span class="button-icon">></span>
-          Run Assessment
-        </button>
-      </div>
-    </header>
+    <div id="appShell" class="hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">MVP Console v2</p>
+          <h1>Performance Testing AI Agent</h1>
+        </div>
+        <div class="topbar-actions">
+          <span id="userBadge" class="user-badge hidden"></span>
+          <button id="logoutBtn" class="button secondary small hidden" type="button">Logout</button>
+          <button id="loadSampleBtn" class="button secondary" type="button" title="Load demo release scenario">
+            <span class="button-icon">+</span>
+            Demo
+          </button>
+          <button id="runBtn" class="button primary" type="button" title="Run assessment">
+            <span class="button-icon">></span>
+            Run Assessment
+          </button>
+        </div>
+      </header>
 
     <main class="workspace">
       <aside class="config-panel" aria-label="Agent configuration">
@@ -181,16 +185,35 @@
           <div class="result-tabs" role="tablist" aria-label="Result sections">
             <button class="result-tab active" type="button" data-view="summaryView">Summary</button>
             <button class="result-tab" type="button" data-view="findingsView">Findings</button>
+            <button class="result-tab" type="button" data-view="evidenceView">Evidence</button>
             <button class="result-tab" type="button" data-view="metricsView">Metrics</button>
             <button class="result-tab" type="button" data-view="reportView">Report</button>
           </div>
 
           <div id="summaryView" class="result-view">
             <div id="dimensionGrid" class="metric-grid"></div>
+            <div id="summaryEvidenceGrid" class="evidence-grid"></div>
           </div>
 
           <div id="findingsView" class="result-view hidden">
             <div id="findingsList" class="findings-list"></div>
+          </div>
+
+          <div id="evidenceView" class="result-view hidden">
+            <div class="evidence-layout">
+              <section>
+                <h3>Failing Endpoints</h3>
+                <div id="failingEndpointList" class="evidence-list"></div>
+              </section>
+              <section>
+                <h3>Database Bottleneck Evidence</h3>
+                <div id="databaseEvidenceList" class="evidence-list"></div>
+              </section>
+              <section>
+                <h3>Observability Links</h3>
+                <div id="connectorEvidenceList" class="evidence-list"></div>
+              </section>
+            </div>
           </div>
 
           <div id="metricsView" class="result-view hidden">
@@ -203,6 +226,49 @@
         </div>
       </section>
     </main>
+  </div>
+
+    <div id="loginOverlay" class="login-overlay force-visible">
+      <div class="login-card">
+        <!-- Login Form -->
+        <div id="loginForm">
+          <h2>Performance Agent Login</h2>
+          <p>Sign in to run assessments and approve risky scenarios.</p>
+          <label>
+            Username
+            <input id="loginUsername" type="text" autocomplete="username">
+          </label>
+          <label>
+            Password
+            <input id="loginPassword" type="password" autocomplete="current-password">
+          </label>
+          <button id="loginBtn" class="button primary" type="button">Sign in</button>
+          <p class="login-note">Only authorized roles may execute spike, stress, or endurance tests.</p>
+          <p class="auth-toggle">Don't have an account? <button id="toggleSignupBtn" class="link-button" type="button">Sign up</button></p>
+        </div>
+
+        <!-- Signup Form -->
+        <div id="signupForm" class="hidden">
+          <h2>Create Account</h2>
+          <p>Sign up with your @ishir domain email to get started.</p>
+          <label>
+            Email (@ishir)
+            <input id="signupEmail" type="email" placeholder="you@ishir" autocomplete="email">
+          </label>
+          <label>
+            Password
+            <input id="signupPassword" type="password" autocomplete="new-password">
+          </label>
+          <label>
+            Confirm Password
+            <input id="signupPasswordConfirm" type="password" autocomplete="new-password">
+          </label>
+          <button id="signupBtn" class="button primary" type="button">Create Account</button>
+          <p class="login-note">Accounts are for team members with @ishir email addresses.</p>
+          <p class="auth-toggle">Already have an account? <button id="toggleLoginBtn" class="link-button" type="button">Sign in</button></p>
+        </div>
+      </div>
+    </div>
 
     <script src="/static/app.js"></script>
   </body>

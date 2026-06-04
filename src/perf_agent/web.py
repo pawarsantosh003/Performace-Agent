@@ -3,13 +3,23 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .adapters import ApprovalRequired, GuardrailViolation
 from .config import ConfigError, parse_config
+from .governance import (
+    ApprovalManager,
+    AuditLogger,
+    SessionManager,
+    UserStore,
+    UserRole,
+    SESSION_COOKIE_NAME,
+)
 from .serialization import to_json
 from .workflow import PerformanceAgent
 
@@ -18,6 +28,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WEB_ROOT = Path(__file__).resolve().parent / "web_static"
 EXAMPLES_ROOT = PROJECT_ROOT / "examples"
 RUNS_ROOT = PROJECT_ROOT / "runs"
+SESSION_MANAGER = SessionManager()
+AUDIT_LOGGER = AuditLogger()
+APPROVAL_MANAGER = ApprovalManager()
+USER_STORE = UserStore()
 
 
 class AgentWebHandler(BaseHTTPRequestHandler):
@@ -25,8 +39,8 @@ class AgentWebHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        path = parsed.path
-        if path == "/":
+        path = parsed.path.rstrip("/")
+        if path == "":
             self._serve_file(WEB_ROOT / "index.html")
             return
         if path.startswith("/static/"):
@@ -35,6 +49,15 @@ class AgentWebHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/sample-config":
             self._send_json(_read_json(EXAMPLES_ROOT / "perf_agent_config.json"))
+            return
+        if path == "/api/session":
+            self._send_json(self._session_payload())
+            return
+        if path == "/api/audit":
+            self._send_audit()
+            return
+        if path == "/api/approvals":
+            self._send_approvals()
             return
         if path == "/api/runs":
             query = parse_qs(parsed.query)
@@ -50,22 +73,47 @@ class AgentWebHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/login":
+            self._handle_login()
+            return
+        if parsed.path == "/api/signup":
+            self._handle_signup()
+            return
+        if parsed.path == "/api/logout":
+            self._handle_logout()
+            return
+        if parsed.path == "/api/approve":
+            self._handle_approval()
+            return
         if parsed.path != "/api/run":
             self._send_error(HTTPStatus.NOT_FOUND, "Route not found")
             return
 
         try:
+            user = self._current_user()
+            if not user:
+                self._send_error(HTTPStatus.UNAUTHORIZED, "Authentication required to start runs.")
+                return
             payload = self._read_json_body()
             config = parse_config(payload["config"], base_dir=EXAMPLES_ROOT)
             approve_risky = bool(payload.get("approve_risky", False))
             use_k6 = bool(payload.get("use_k6", False))
-            run = PerformanceAgent(use_k6=use_k6).run(config, output_root=RUNS_ROOT, approve_risky=approve_risky)
+            if approve_risky and user.role not in {UserRole.APPROVER, UserRole.ADMIN}:
+                raise ApprovalRequired("Only users with Approver or Admin role may authorize risky test runs.")
+            AUDIT_LOGGER.log("run_requested", user, {"approve_risky": approve_risky, "release_id": config.release_id})
+            run = PerformanceAgent(use_k6=use_k6).run(
+                config,
+                output_root=RUNS_ROOT,
+                approve_risky=approve_risky,
+            )
+            AUDIT_LOGGER.log("run_completed", user, {"run_id": run.run_id, "status": run.readiness.status.value})
             self._send_json(
                 {
                     "run_id": run.run_id,
                     "readiness": to_json(run.readiness),
                     "findings": to_json(run.findings),
                     "scenario_results": to_json(run.scenario_results),
+                    "connector_annotations": to_json(run.connector_annotations),
                     "artifacts": _web_artifact_links(run.run_id),
                     "manifest": _read_json(Path(run.artifacts["manifest"])),
                 }
@@ -79,6 +127,131 @@ class AgentWebHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args) -> None:
         print(f"{self.address_string()} - {format % args}")
+
+    def _current_user(self) -> Any:
+        return SESSION_MANAGER.get_user(self.headers.get("Cookie"))
+
+    def _session_payload(self) -> dict[str, Any]:
+        user = self._current_user()
+        if not user:
+            return {"authenticated": False}
+        return {
+            "authenticated": True,
+            "username": user.username,
+            "role": user.role,
+            "display_name": user.display_name,
+        }
+
+    def _handle_login(self) -> None:
+        try:
+            payload = self._read_json_body()
+            username = str(payload.get("username", "")).strip()
+            password = str(payload.get("password", ""))
+            user = USER_STORE.authenticate(username, password)
+            if not user:
+                AUDIT_LOGGER.log("login_failed", None, {"username": username})
+                self._send_error(HTTPStatus.UNAUTHORIZED, "Invalid username or password.")
+                return
+            session_id = SESSION_MANAGER.create_session(user)
+            AUDIT_LOGGER.log("login_success", user, {})
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header(
+                "Set-Cookie",
+                f"{SESSION_COOKIE_NAME}={session_id}; HttpOnly; Path=/; SameSite=Lax",
+            )
+            self.end_headers()
+            self.wfile.write(json.dumps({"authenticated": True, "username": user.username, "role": user.role}).encode("utf-8"))
+        except json.JSONDecodeError as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, f"Invalid JSON: {exc}")
+
+    def _handle_signup(self) -> None:
+        try:
+            payload = self._read_json_body()
+            email = str(payload.get("email", "")).strip()
+            password = str(payload.get("password", ""))
+            password_confirm = str(payload.get("password_confirm", ""))
+            
+            if not email or not password:
+                self._send_error(HTTPStatus.BAD_REQUEST, "Email and password are required.")
+                return
+            
+            if password != password_confirm:
+                self._send_error(HTTPStatus.BAD_REQUEST, "Passwords do not match.")
+                return
+            
+            try:
+                user = USER_STORE.register(email, password)
+                AUDIT_LOGGER.log("user_registered", None, {"email": email, "username": user.username})
+                session_id = SESSION_MANAGER.create_session(user)
+                AUDIT_LOGGER.log("login_success", user, {"method": "signup"})
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header(
+                    "Set-Cookie",
+                    f"{SESSION_COOKIE_NAME}={session_id}; HttpOnly; Path=/; SameSite=Lax",
+                )
+                self.end_headers()
+                self.wfile.write(json.dumps({"authenticated": True, "username": user.username, "role": user.role}).encode("utf-8"))
+            except ValueError as exc:
+                AUDIT_LOGGER.log("signup_failed", None, {"email": email, "reason": str(exc)})
+                self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+        except json.JSONDecodeError as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, f"Invalid JSON: {exc}")
+
+    def _handle_logout(self) -> None:
+        user = self._current_user()
+        if user:
+            AUDIT_LOGGER.log("logout", user, {})
+        SESSION_MANAGER.destroy_session(self.headers.get("Cookie"))
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header(
+            "Set-Cookie",
+            f"{SESSION_COOKIE_NAME}=deleted; HttpOnly; Path=/; Max-Age=0; SameSite=Lax",
+        )
+        self.end_headers()
+        self.wfile.write(json.dumps({"authenticated": False}).encode("utf-8"))
+
+    def _handle_approval(self) -> None:
+        user = self._current_user()
+        if not user:
+            self._send_error(HTTPStatus.UNAUTHORIZED, "Authentication required to approve.")
+            return
+        if user.role not in {UserRole.APPROVER, UserRole.ADMIN}:
+            self._send_error(HTTPStatus.FORBIDDEN, "Only Approver and Admin roles can approve risky test runs.")
+            return
+        try:
+            payload = self._read_json_body()
+            run_id = str(payload.get("run_id", "")).strip()
+            scenario_name = str(payload.get("scenario_name", "")).strip()
+            comment = payload.get("comment")
+            if not run_id or not scenario_name:
+                self._send_error(HTTPStatus.BAD_REQUEST, "run_id and scenario_name are required.")
+                return
+            record = APPROVAL_MANAGER.approve(run_id, scenario_name, user, comment)
+            AUDIT_LOGGER.log("approval_created", user, asdict(record))
+            self._send_json(asdict(record))
+        except json.JSONDecodeError as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, f"Invalid JSON: {exc}")
+
+    def _send_audit(self) -> None:
+        user = self._current_user()
+        if not user or user.role != UserRole.ADMIN:
+            self._send_error(HTTPStatus.FORBIDDEN, "Audit log access requires Admin role.")
+            return
+        entries = [asdict(entry) for entry in AUDIT_LOGGER.tail(200)]
+        self._send_json(entries)
+
+    def _send_approvals(self) -> None:
+        user = self._current_user()
+        if not user:
+            self._send_error(HTTPStatus.UNAUTHORIZED, "Authentication required.")
+            return
+        approvals = APPROVAL_MANAGER.list()
+        if user.role not in {UserRole.APPROVER, UserRole.ADMIN}:
+            approvals = [item for item in approvals if item.approved_by == user.username]
+        self._send_json([asdict(item) for item in approvals])
 
     def _read_json_body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
@@ -98,6 +271,7 @@ class AgentWebHandler(BaseHTTPRequestHandler):
             "backlog": "optimization_backlog.json",
             "readiness": "release_readiness.json",
             "raw": "raw_results.json",
+            "connectors": "connector_annotations.json",
             "manifest": "manifest.json",
         }
         if artifact not in allowed:
@@ -126,6 +300,7 @@ class AgentWebHandler(BaseHTTPRequestHandler):
                     "readiness": readiness,
                     "findings": _read_json(run_dir / "optimization_backlog.json"),
                     "scenario_results": _read_json(run_dir / "raw_results.json"),
+                    "connector_annotations": _read_optional_json(run_dir / "connector_annotations.json", {}),
                     "report_text": (run_dir / "performance_report.md").read_text(encoding="utf-8"),
                     "artifacts": _web_artifact_links(run_id),
                 }
@@ -180,6 +355,12 @@ def main(argv: list[str] | None = None) -> int:
 
 def _read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_optional_json(path: Path, default: object) -> object:
+    if not path.exists():
+        return default
+    return _read_json(path)
 
 
 def _list_runs(search: str = "") -> list[dict[str, str]]:
@@ -245,6 +426,7 @@ def _web_artifact_links(run_id: str) -> dict[str, str]:
         "backlog": f"/api/runs/{run_id}/backlog",
         "readiness": f"/api/runs/{run_id}/readiness",
         "raw": f"/api/runs/{run_id}/raw",
+        "connectors": f"/api/runs/{run_id}/connectors",
         "manifest": f"/api/runs/{run_id}/manifest",
     }
 

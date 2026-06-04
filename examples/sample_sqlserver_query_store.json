@@ -1,0 +1,20 @@
+{
+  "query_store": [
+    {
+      "query_text": "SELECT TOP 20 * FROM Orders WHERE CustomerId = @customerId ORDER BY CreatedAt DESC",
+      "avg_duration_ms": 420,
+      "max_duration_ms": 980,
+      "execution_count": 1460,
+      "rows_scanned": 96000,
+      "wait_time_ms": 24
+    },
+    {
+      "query_text": "UPDATE Inventory SET Reserved = Reserved + @qty WHERE Sku = @sku",
+      "avg_duration_ms": 190,
+      "max_duration_ms": 430,
+      "execution_count": 760,
+      "rows_scanned": 1,
+      "wait_time_ms": 590
+    }
+  ]
+}

@@ -4,11 +4,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .governance import resolve_secret
 from .models import (
     AgentConfig,
     ApiSla,
+    DatabaseConnector,
     Endpoint,
     Environment,
+    MonitoringConnector,
     PageTarget,
     Scenario,
     TestEngine,
@@ -47,6 +50,11 @@ def parse_config(raw: dict[str, Any], base_dir: Path | None = None) -> AgentConf
         allow_risky_tests=bool(env_raw.get("allow_risky_tests", False)),
         max_concurrent_users=int(env_raw.get("max_concurrent_users", 1000)),
         max_duration_seconds=int(env_raw.get("max_duration_seconds", 7200)),
+        max_target_tps=_optional_float(env_raw.get("max_target_tps")),
+        allowed_hosts=[str(item).lower() for item in env_raw.get("allowed_hosts", []) if item],
+        allowed_url_prefixes=[str(item) for item in env_raw.get("allowed_url_prefixes", []) if item],
+        test_window_start=_optional_str(env_raw.get("test_window_start")),
+        test_window_end=_optional_str(env_raw.get("test_window_end")),
     )
 
     web_raw = raw.get("web_vitals", {})
@@ -67,6 +75,8 @@ def parse_config(raw: dict[str, Any], base_dir: Path | None = None) -> AgentConf
         web_vitals=web_vitals,
         monitoring_metrics_file=_optional_path(raw.get("monitoring_metrics_file"), base_dir),
         database_metrics_file=_optional_path(raw.get("database_metrics_file"), base_dir),
+        monitoring_connectors=[_parse_monitoring_connector(item) for item in raw.get("monitoring_connectors", [])],
+        database_connectors=[_parse_database_connector(item, base_dir) for item in raw.get("database_connectors", [])],
         previous_baseline_file=_optional_path(raw.get("previous_baseline_file"), base_dir),
         test_engine=TestEngine(str(raw.get("test_engine", "synthetic")).lower()),
     )
@@ -130,3 +140,41 @@ def _optional_path(value: str | None, base_dir: Path | None) -> str | None:
     if path.is_absolute() or base_dir is None:
         return str(path)
     return str((base_dir / path).resolve())
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ConfigError(f"Invalid numeric value: {value}")
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _parse_monitoring_connector(raw: dict[str, Any]) -> MonitoringConnector:
+    return MonitoringConnector(
+        name=str(_required(raw, "name")),
+        connector_type=str(_required(raw, "type")).lower(),
+        endpoint=raw.get("endpoint"),
+        api_key=resolve_secret(raw.get("api_key")) if raw.get("api_key") else None,
+        query=raw.get("query"),
+        dashboard_url=raw.get("dashboard_url"),
+        trace_url_template=raw.get("trace_url_template"),
+        options=dict(raw.get("options", {})) if raw.get("options") else {},
+    )
+
+
+def _parse_database_connector(raw: dict[str, Any], base_dir: Path | None) -> DatabaseConnector:
+    return DatabaseConnector(
+        name=str(_required(raw, "name")),
+        connector_type=str(_required(raw, "type")).lower(),
+        source_file=_optional_path(raw.get("source_file"), base_dir),
+        connection_string=resolve_secret(raw.get("connection_string")) if raw.get("connection_string") else None,
+        options=dict(raw.get("options", {})) if raw.get("options") else {},
+    )

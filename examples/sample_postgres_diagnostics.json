@@ -1,0 +1,31 @@
+{
+  "pg_stat_statements": [
+    {
+      "query": "select * from orders where customer_id = $1 order by created_at desc limit 20",
+      "mean_time": 390,
+      "p95_time": 910,
+      "calls": 2480,
+      "rows": 142000,
+      "lock_wait_ms": 18,
+      "recommendation_hint": "Add or validate a composite index on orders(customer_id, created_at desc), avoid select *, and confirm the plan uses an index scan."
+    },
+    {
+      "query": "update inventory set reserved = reserved + $1 where sku = $2",
+      "mean_time": 210,
+      "p95_time": 520,
+      "calls": 1180,
+      "rows": 1,
+      "lock_wait_ms": 640
+    }
+  ],
+  "explain_plans": [
+    {
+      "query": "select * from orders where customer_id = $1 order by created_at desc limit 20",
+      "plan": {
+        "Node Type": "Seq Scan",
+        "Relation Name": "orders",
+        "Sort Key": "created_at DESC"
+      }
+    }
+  ]
+}

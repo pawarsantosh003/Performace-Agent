@@ -1,0 +1,97 @@
+{
+  "application_name": "Retail Checkout Platform",
+  "release_id": "2026.06.04-phase3",
+  "test_engine": "synthetic",
+  "environment": {
+    "name": "pre-prod",
+    "base_url": "https://preprod.example.com",
+    "allow_risky_tests": true,
+    "max_concurrent_users": 1000,
+    "max_duration_seconds": 7200
+  },
+  "monitoring_connectors": [
+    {
+      "name": "Prometheus pre-prod",
+      "type": "prometheus",
+      "endpoint": "http://localhost:9090",
+      "options": {
+        "cpu_query": "avg(rate(container_cpu_usage_seconds_total[5m])) * 100",
+        "memory_query": "avg(container_memory_working_set_bytes / container_spec_memory_limit_bytes) * 100",
+        "disk_query": "avg(rate(node_disk_io_time_seconds_total[5m])) * 100",
+        "network_query": "avg(rate(container_network_receive_bytes_total[5m]))",
+        "error_budget_query": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])) * 100"
+      }
+    },
+    {
+      "name": "Checkout Grafana",
+      "type": "grafana",
+      "dashboard_url": "https://grafana.example.com/d/checkout/performance?var-release=2026.06.04-phase3"
+    },
+    {
+      "name": "OpenTelemetry traces",
+      "type": "opentelemetry",
+      "trace_url_template": "https://tempo.example.com/search?tags=performance.run_id%3D{run_id}"
+    },
+    {
+      "name": "Datadog design placeholder",
+      "type": "datadog"
+    }
+  ],
+  "database_connectors": [
+    {
+      "name": "PostgreSQL pg_stat_statements",
+      "type": "postgres",
+      "source_file": "sample_postgres_diagnostics.json"
+    },
+    {
+      "name": "MySQL slow query log",
+      "type": "mysql",
+      "source_file": "sample_mysql_slow.log"
+    },
+    {
+      "name": "SQL Server Query Store",
+      "type": "sqlserver",
+      "source_file": "sample_sqlserver_query_store.json"
+    }
+  ],
+  "web_vitals": {
+    "lcp_p75_ms": 2500,
+    "inp_p75_ms": 200,
+    "cls_p75": 0.1,
+    "fcp_p75_ms": 1800,
+    "ttfb_p75_ms": 800
+  },
+  "scenarios": [
+    {
+      "name": "checkout load with observability",
+      "test_type": "load",
+      "workload": {
+        "concurrent_users": 250,
+        "duration_seconds": 60,
+        "ramp_up_seconds": 15,
+        "target_tps": 45
+      },
+      "endpoints": [
+        {
+          "name": "checkout submit",
+          "method": "POST",
+          "url": "https://preprod.example.com/api/checkout",
+          "business_criticality": 5,
+          "sla": {
+            "p95_ms": 700,
+            "p99_ms": 1500,
+            "error_rate_pct": 0.1,
+            "throughput_rps": 12
+          }
+        }
+      ],
+      "pages": [
+        {
+          "name": "checkout page",
+          "url": "https://preprod.example.com/checkout",
+          "business_criticality": 5
+        }
+      ]
+    }
+  ]
+}

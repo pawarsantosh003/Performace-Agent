@@ -3,6 +3,9 @@ setlocal
 
 set "PROJECT_DIR=%~dp0"
 set "PYTHONPATH=%PROJECT_DIR%src"
+set "PAGESPEED_API_KEY=e6b81d77b62d731d285ddafcce2f57e65c4df130"
+if not defined PERF_AGENT_ADMIN_USER set "PERF_AGENT_ADMIN_USER=admin"
+if not defined PERF_AGENT_ADMIN_PASSWORD set "PERF_AGENT_ADMIN_PASSWORD=ChangeMe123"
 set "BUNDLED_PY=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
 
 if exist "%BUNDLED_PY%" (

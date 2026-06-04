@@ -1,0 +1,53 @@
+name: Release Readiness Gate
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [main, master]
+
+jobs:
+  readiness-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run performance readiness gate
+        id: run-agent
+        run: |
+          python -m perf_agent run --config examples/perf_agent_config.json --out runs --approve-risky --release-gate
+
+      - name: Upload performance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-artifacts
+          path: runs/**
+
+      - name: Build PR comment body
+        if: github.event_name == 'pull_request'
+        id: summary-body
+        run: |
+          run_dir=$(find runs -maxdepth 1 -mindepth 1 -type d | sort | tail -n1)
+          printf 'body<<EOF\n' >> $GITHUB_OUTPUT
+          printf '## Performance Readiness Gate\n\n' >> $GITHUB_OUTPUT
+          cat "$run_dir/readiness_summary.md" >> $GITHUB_OUTPUT
+          printf '\nEOF\n' >> $GITHUB_OUTPUT
+
+      - name: Create or update PR comment
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: ${{ steps.summary-body.outputs.body }}
+          title: Performance Readiness Gate
