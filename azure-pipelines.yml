@@ -11,6 +11,9 @@ pr:
 pool:
   vmImage: ubuntu-latest
 
+variables:
+  PERF_AGENT_CONFIG: 'examples/ci_release_gate_config.json'
+
 steps:
 - checkout: self
 
@@ -19,12 +22,24 @@ steps:
     versionSpec: '3.11'
 
 - script: |
-    python -m pip install --upgrade pip
     python -m pip install -e .
-    python -m perf_agent run --config examples/perf_agent_config.json --out runs --approve-risky --release-gate
+    set +e
+    python -m perf_agent run --config "$(PERF_AGENT_CONFIG)" --out runs --release-gate
+    gate_code=$?
+    echo "##vso[task.setvariable variable=PERF_GATE_EXIT_CODE]$gate_code"
+    if [ "$gate_code" -eq 1 ]; then
+      echo "##vso[task.logissue type=warning]Performance gate is AMBER. Review the published readiness report."
+      exit 0
+    fi
+    if [ "$gate_code" -ge 2 ]; then
+      echo "##vso[task.logissue type=error]Performance gate blocked the release."
+      exit "$gate_code"
+    fi
+    echo "Performance gate passed."
   displayName: 'Run Performance Readiness Gate'
 
 - task: PublishBuildArtifacts@1
+  condition: always()
   inputs:
     PathtoPublish: 'runs'
     ArtifactName: 'performance-artifacts'

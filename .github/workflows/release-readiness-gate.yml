@@ -1,53 +1,109 @@
-name: Release Readiness Gate
+name: Performance Release Readiness Gate
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    branches: [main]
   push:
-    branches: [main, master]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
-  readiness-gate:
+  performance-gate:
     runs-on: ubuntu-latest
+    env:
+      PERF_AGENT_CONFIG: ${{ vars.PERF_AGENT_CONFIG || 'examples/ci_release_gate_config.json' }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
+          cache: pip
 
-      - name: Install package
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
+      - name: Install agent
+        run: python -m pip install -e .
 
-      - name: Run performance readiness gate
-        id: run-agent
+      - name: Run performance release gate
+        id: gate
+        shell: bash
         run: |
-          python -m perf_agent run --config examples/perf_agent_config.json --out runs --approve-risky --release-gate
+          set +e
+          python -m perf_agent run \
+            --config "$PERF_AGENT_CONFIG" \
+            --out runs \
+            --release-gate
+          gate_code=$?
+          summary_path="$(find runs -name readiness_summary.md -print -quit)"
+          gate_path="$(find runs -name release_gate.json -print -quit)"
+          echo "exit_code=$gate_code" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "gate_path=$gate_path" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Upload performance artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: performance-artifacts
-          path: runs/**
+          name: performance-agent-${{ github.run_id }}
+          path: runs/
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Build PR comment body
-        if: github.event_name == 'pull_request'
-        id: summary-body
-        run: |
-          run_dir=$(find runs -maxdepth 1 -mindepth 1 -type d | sort | tail -n1)
-          printf 'body<<EOF\n' >> $GITHUB_OUTPUT
-          printf '## Performance Readiness Gate\n\n' >> $GITHUB_OUTPUT
-          cat "$run_dir/readiness_summary.md" >> $GITHUB_OUTPUT
-          printf '\nEOF\n' >> $GITHUB_OUTPUT
-
-      - name: Create or update PR comment
-        if: github.event_name == 'pull_request'
-        uses: peter-evans/create-or-update-comment@v4
+      - name: Post performance summary to pull request
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          SUMMARY_PATH: ${{ steps.gate.outputs.summary_path }}
+          GATE_EXIT_CODE: ${{ steps.gate.outputs.exit_code }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body: ${{ steps.summary-body.outputs.body }}
-          title: Performance Readiness Gate
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- performance-agent-release-gate -->';
+            const summary = process.env.SUMMARY_PATH && fs.existsSync(process.env.SUMMARY_PATH)
+              ? fs.readFileSync(process.env.SUMMARY_PATH, 'utf8')
+              : 'Performance Agent did not produce a readiness summary.';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `${marker}\n${summary}\n\nGate exit code: \`${process.env.GATE_EXIT_CODE}\`\n\n[Open the workflow run and download the full performance artifacts](${runUrl})`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100
+            });
+            const existing = comments.find(comment =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker)
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body
+              });
+            }
+
+      - name: Enforce release gate
+        if: always()
+        shell: bash
+        env:
+          GATE_EXIT_CODE: ${{ steps.gate.outputs.exit_code }}
+        run: |
+          case "$GATE_EXIT_CODE" in
+            0)
+              echo "Performance gate passed."
+              ;;
+            1)
+              echo "::warning::Performance gate is AMBER. Review the attached report before release."
+              ;;
+            *)
+              echo "::error::Performance gate blocked the release."
+              exit 1
+              ;;
+          esac

@@ -26,7 +26,7 @@ class Phase3ObservabilityTests(unittest.TestCase):
         agent = PerformanceAgent()
 
         with tempfile.TemporaryDirectory() as tmp:
-            run = agent.run(config, output_root=Path(tmp), approve_risky=True)
+            run = agent.run(config, output_root=Path(tmp))
 
             self.assertTrue(run.connector_annotations["trace_links"])
             self.assertTrue(any(finding.category == "database" for finding in run.findings))

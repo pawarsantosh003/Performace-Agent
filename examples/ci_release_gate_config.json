@@ -1,0 +1,38 @@
+{
+  "application_name": "CI Performance Gate Sample",
+  "release_id": "pipeline",
+  "test_engine": "synthetic",
+  "environment": {
+    "name": "ci",
+    "base_url": "https://example.com",
+    "max_concurrent_users": 100,
+    "max_duration_seconds": 300
+  },
+  "scenarios": [
+    {
+      "name": "CI API smoke gate",
+      "test_type": "smoke",
+      "workload": {
+        "concurrent_users": 10,
+        "duration_seconds": 15,
+        "ramp_up_seconds": 5,
+        "target_tps": 2
+      },
+      "endpoints": [
+        {
+          "name": "health endpoint",
+          "method": "GET",
+          "url": "https://example.com/health",
+          "business_criticality": 5,
+          "sla": {
+            "p95_ms": 5000,
+            "p99_ms": 10000,
+            "error_rate_pct": 5,
+            "throughput_rps": 1
+          }
+        }
+      ],
+      "pages": []
+    }
+  ]
+}

@@ -376,6 +376,50 @@ textarea {
   overflow: auto;
 }
 
+.approval-action {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.approval-list {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  margin-top: 10px;
+  overflow: auto;
+}
+
+.approval-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px;
+  background: #fff;
+}
+
+.approval-card p {
+  margin: 6px 0;
+  color: var(--muted);
+}
+
+.approval-card small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.approval-header,
+.approval-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.approval-buttons {
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+
 .run-history-item {
   width: 100%;
   border: 1px solid var(--border);

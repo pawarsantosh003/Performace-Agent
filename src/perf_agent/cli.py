@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .adapters import ApprovalRequired, GuardrailViolation
 from .config import ConfigError, load_config
+from .governance import ApprovalManager, risky_scenario_names
 from .models import AgentConfig, ReadinessStatus, TestEngine
 from .workflow import PerformanceAgent
 
@@ -15,7 +16,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("run", nargs="?", help="Command to execute. Currently only 'run' is supported.")
     parser.add_argument("--config", required=True, help="Path to agent JSON config.")
     parser.add_argument("--out", default="runs", help="Output directory for reports and baselines.")
-    parser.add_argument("--approve-risky", action="store_true", help="Approve stress, spike, and endurance scenarios.")
+    parser.add_argument(
+        "--approval-id",
+        help="Approved one-time approval ID required for stress, spike, and endurance scenarios.",
+    )
+    parser.add_argument(
+        "--approve-risky",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--use-k6", action="store_true", help="Use k6 when available; falls back to synthetic results.")
     parser.add_argument(
         "--engine",
@@ -36,8 +45,25 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config(args.config)
         if args.engine:
             config = _with_engine(config, TestEngine(args.engine))
+        if args.approve_risky:
+            raise ApprovalRequired(
+                "--approve-risky is no longer accepted. Use an authorized --approval-id."
+            )
+        approval_manager = ApprovalManager()
+        approval = None
+        if risky_scenario_names(config):
+            if not args.approval_id:
+                raise ApprovalRequired(
+                    "Risky scenarios require --approval-id from an authorized approval workflow."
+                )
+            try:
+                approval = approval_manager.validate(args.approval_id, config)
+            except ValueError as exc:
+                raise ApprovalRequired(str(exc)) from exc
         agent = PerformanceAgent(use_k6=args.use_k6)
-        run = agent.run(config, output_root=Path(args.out), approve_risky=args.approve_risky)
+        run = agent.run(config, output_root=Path(args.out), approval=approval)
+        if approval:
+            approval_manager.consume(approval.approval_id, run.run_id)
     except (ConfigError, ApprovalRequired, GuardrailViolation) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -48,8 +74,12 @@ def main(argv: list[str] | None = None) -> int:
     for name, path in run.artifacts.items():
         print(f"  {name}: {path}")
     if args.release_gate:
+        decision = _gate_decision_for_readiness(run.readiness.status)
         exit_code = _exit_code_for_readiness(run.readiness.status)
-        print(f"Release gate status: {run.readiness.status.value.upper()} -> exit code {exit_code}")
+        print(
+            f"Release gate decision: {decision.upper()} "
+            f"({run.readiness.status.value.upper()}) -> exit code {exit_code}"
+        )
         return exit_code
     return 0
 
@@ -63,17 +93,23 @@ def _with_engine(config: AgentConfig, engine: TestEngine) -> AgentConfig:
         web_vitals=config.web_vitals,
         monitoring_metrics_file=config.monitoring_metrics_file,
         database_metrics_file=config.database_metrics_file,
+        monitoring_connectors=config.monitoring_connectors,
+        database_connectors=config.database_connectors,
         previous_baseline_file=config.previous_baseline_file,
         test_engine=engine,
     )
 
 
-def _exit_code_for_readiness(status: ReadinessStatus) -> int:
+def _gate_decision_for_readiness(status: ReadinessStatus) -> str:
     if status == ReadinessStatus.GREEN:
-        return 0
+        return "pass"
     if status == ReadinessStatus.AMBER:
-        return 1
-    return 2
+        return "warn"
+    return "block"
+
+
+def _exit_code_for_readiness(status: ReadinessStatus) -> int:
+    return {"pass": 0, "warn": 1, "block": 2}[_gate_decision_for_readiness(status)]
 
 
 if __name__ == "__main__":

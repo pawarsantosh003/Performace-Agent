@@ -31,6 +31,9 @@ The agent is designed to run before UAT or production release and produce:
 - OpenAI Responses API structured-output RCA generation when `OPENAI_API_KEY` is configured.
 - Deterministic fallback RCA generation when no OpenAI key is available.
 - Evidence citation guardrails, confidence scoring, prompt-template tracking, and validation-plan enforcement.
+- Cross-platform CI/CD release gates for GitHub Actions, Jenkins, GitLab, and Azure DevOps.
+- Machine-readable `release_gate.json` with pass, warn, or block decisions.
+- PR/MR summary comments and retained build artifacts.
 - Markdown and JSON report generation.
 - Baseline artifact generation.
 
@@ -41,10 +44,10 @@ Use the bundled Python runtime in Codex, or any Python 3.11+ installation.
 ```powershell
 $py = "C:\Users\SantoshLaxmanPawar\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
 $env:PYTHONPATH = "$PWD\src"
-& $py -m perf_agent run --config .\examples\perf_agent_config.json --out .\runs --approve-risky
+& $py -m perf_agent run --config .\examples\ci_release_gate_config.json --out .\runs
 ```
 
-The `--approve-risky` flag is required for the sample spike scenario. Without it, the guardrail stops the run.
+Stress, spike, and endurance tests require an approval request created in the UI. Approved CLI runs use `--approval-id`.
 
 Generated artifacts are written under `runs/<run-id>/`:
 
@@ -52,6 +55,7 @@ Generated artifacts are written under `runs/<run-id>/`:
 - `baseline.json`
 - `optimization_backlog.json`
 - `release_readiness.json`
+- `release_gate.json`
 - `readiness_summary.md`
 - `raw_results.json`
 - `connector_annotations.json`
@@ -61,7 +65,7 @@ Generated artifacts are written under `runs/<run-id>/`:
 Use the CLI in CI to gate releases automatically:
 
 ```powershell
-& $py -m perf_agent run --config .\examples\perf_agent_config.json --out .\runs --approve-risky --release-gate
+& $py -m perf_agent run --config .\examples\ci_release_gate_config.json --out .\runs --release-gate
 ```
 
 Exit codes:
@@ -70,7 +74,22 @@ Exit codes:
 - `1` = AMBER / warn
 - `2` = RED or BLOCKED / fail
 
+Release-gate decisions:
+
+- `PASS` = GREEN
+- `WARN` = AMBER
+- `BLOCK` = RED or BLOCKED
+
 For full pipeline templates and policy guidance, see `docs/ci_cd_release_gate.md`.
+
+Included templates:
+
+- `.github/workflows/release-readiness-gate.yml`
+- `Jenkinsfile`
+- `.gitlab-ci.yml`
+- `azure-pipelines.yml`
+
+The GitHub workflow uploads all reports and maintains a performance summary comment on pull requests. All templates preserve artifacts when the gate blocks.
 
 ## Web UI
 
@@ -115,6 +134,10 @@ The UI lets a user:
 - Review release readiness, findings, scenario metrics, and generated artifacts.
 - Open an Evidence tab for failing endpoints, database bottlenecks, Grafana dashboards, trace links, and connector status.
 - Expand high-priority findings to review AI RCA, prompt template, confidence, evidence citations, guardrail notes, and validation plan.
+- Use Viewer, Tester, Approver, and Admin roles with configuration-bound risky-test approvals.
+- Review pending approvals and, for Admin users, the redacted audit trail.
+
+Governance and secret-manager configuration is documented in `docs/governance_security.md`.
 
 ## Test Engines
 
@@ -133,7 +156,7 @@ The UI and CLI now support multiple engines:
 CLI example:
 
 ```powershell
-& $py -m perf_agent run --config .\examples\perf_agent_config.json --out .\runs --approve-risky --engine lighthouse
+& $py -m perf_agent run --config .\examples\phase3_observability_config.json --out .\runs --engine lighthouse
 ```
 
 ## Running With k6
@@ -141,7 +164,7 @@ CLI example:
 If k6 is installed and available on PATH, run:
 
 ```powershell
-& $py -m perf_agent run --config .\examples\perf_agent_config.json --out .\runs --approve-risky --use-k6
+& $py -m perf_agent run --config .\examples\phase3_observability_config.json --out .\runs --use-k6
 ```
 
 If k6 is not installed or fails, the agent falls back to deterministic synthetic results and records that in raw output.
@@ -172,7 +195,7 @@ Each scenario includes:
 Phase 3 observability and database example:
 
 ```powershell
-& $py -m perf_agent run --config .\examples\phase3_observability_config.json --out .\runs --approve-risky
+& $py -m perf_agent run --config .\examples\phase3_observability_config.json --out .\runs
 ```
 
 Supported connector types in the current implementation:

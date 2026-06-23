@@ -113,12 +113,7 @@
             </label>
           </div>
 
-          <div class="controls-row">
-            <label class="toggle">
-              <input id="approveRisky" type="checkbox">
-              <span>Approve spike/stress/endurance</span>
-            </label>
-          </div>
+          <div id="riskyApprovalState" class="notice hidden"></div>
 
           <div id="engineNotice" class="notice hidden">
             Real engines depend on local tools or API keys and can take longer than Fast Assessment.
@@ -137,6 +132,35 @@
           </div>
           <textarea id="configJson" spellcheck="false" aria-label="Agent JSON configuration"></textarea>
         </div>
+
+        <section id="approvalPanel" class="history-panel hidden" aria-label="Risky test approvals">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Governance</p>
+              <h2>Risky Test Approvals</h2>
+            </div>
+            <button id="refreshApprovalsBtn" class="button secondary small" type="button">Refresh</button>
+          </div>
+          <label id="approvalCommentLabel">
+            Approval note
+            <input id="approvalComment" type="text" placeholder="Purpose, test window, and expected impact">
+          </label>
+          <button id="requestApprovalBtn" class="button secondary approval-action" type="button">
+            Request Approval
+          </button>
+          <div id="approvalList" class="approval-list"></div>
+        </section>
+
+        <section id="auditPanel" class="history-panel hidden" aria-label="Audit trail">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Security</p>
+              <h2>Audit Trail</h2>
+            </div>
+            <button id="refreshAuditBtn" class="button secondary small" type="button">Refresh</button>
+          </div>
+          <div id="auditList" class="approval-list"></div>
+        </section>
 
         <section class="history-panel" aria-label="Run history">
           <div class="section-heading compact">
@@ -244,15 +268,15 @@
           </label>
           <button id="loginBtn" class="button primary" type="button">Sign in</button>
           <p class="login-note">Only authorized roles may execute spike, stress, or endurance tests.</p>
-          <p class="auth-toggle">Don't have an account? <button id="toggleSignupBtn" class="link-button" type="button">Sign up</button></p>
+          <p id="signupToggle" class="auth-toggle hidden">Don't have an account? <button id="toggleSignupBtn" class="link-button" type="button">Sign up</button></p>
         </div>
 
         <!-- Signup Form -->
         <div id="signupForm" class="hidden">
           <h2>Create Account</h2>
-          <p>Sign up with your @ishir domain email to get started.</p>
+          <p id="signupIntro">Sign up with your approved organization email.</p>
           <label>
-            Email (@ishir)
+            Email
             <input id="signupEmail" type="email" placeholder="you@ishir" autocomplete="email">
           </label>
           <label>
@@ -264,7 +288,7 @@
             <input id="signupPasswordConfirm" type="password" autocomplete="new-password">
           </label>
           <button id="signupBtn" class="button primary" type="button">Create Account</button>
-          <p class="login-note">Accounts are for team members with @ishir email addresses.</p>
+          <p id="signupNote" class="login-note">Self-service signup is controlled by the administrator.</p>
           <p class="auth-toggle">Already have an account? <button id="toggleLoginBtn" class="link-button" type="button">Sign in</button></p>
         </div>
       </div>

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
+from .governance import redact_sensitive
+
 SECRET_FIELDS = {
     "api_key",
     "connection_string",
@@ -24,12 +26,11 @@ def _redact_key(key: str, value: Any) -> Any:
 
 def to_json(value: Any) -> Any:
     if is_dataclass(value):
-        return {key: _redact_key(key, item) for key, item in asdict(value).items()}
+        return redact_sensitive({key: _redact_key(key, item) for key, item in asdict(value).items()})
     if isinstance(value, list):
         return [to_json(item) for item in value]
     if isinstance(value, dict):
-        return {key: _redact_key(key, item) for key, item in value.items()}
+        return redact_sensitive({key: _redact_key(key, item) for key, item in value.items()})
     if hasattr(value, "value"):
         return value.value
     return value
-

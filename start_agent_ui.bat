@@ -3,11 +3,17 @@ setlocal
 
 set "PROJECT_DIR=%~dp0"
 set "PYTHONPATH=%PROJECT_DIR%src"
-set "PAGESPEED_API_KEY=e6b81d77b62d731d285ddafcce2f57e65c4df130"
 if not defined PERF_AGENT_ADMIN_USER set "PERF_AGENT_ADMIN_USER=admin"
-if not defined PERF_AGENT_ADMIN_PASSWORD set "PERF_AGENT_ADMIN_PASSWORD=ChangeMe123"
-set "BUNDLED_PY=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+if not defined PERF_AGENT_ADMIN_PASSWORD (
+  echo No admin password is configured.
+  for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$s=Read-Host 'Enter a temporary local admin password' -AsSecureString; $b=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s); try {[Runtime.InteropServices.Marshal]::PtrToStringBSTR($b)} finally {[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($b)}"`) do set "PERF_AGENT_ADMIN_PASSWORD=%%P"
+)
+if not defined PERF_AGENT_ADMIN_PASSWORD (
+  echo Admin password is required. The UI was not started.
+  exit /b 1
+)
 
+set "BUNDLED_PY=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
 if exist "%BUNDLED_PY%" (
   set "PY_EXE=%BUNDLED_PY%"
 ) else (
@@ -26,4 +32,3 @@ echo.
 "%PY_EXE%" -m perf_agent.web --host 127.0.0.1 --port 8765
 
 endlocal
-

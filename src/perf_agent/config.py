@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .governance import resolve_secret
+from .governance import require_secret_reference, resolve_secret_references
 from .models import (
     AgentConfig,
     ApiSla,
@@ -158,23 +158,32 @@ def _optional_str(value: Any) -> str | None:
 
 
 def _parse_monitoring_connector(raw: dict[str, Any]) -> MonitoringConnector:
-    return MonitoringConnector(
-        name=str(_required(raw, "name")),
-        connector_type=str(_required(raw, "type")).lower(),
-        endpoint=raw.get("endpoint"),
-        api_key=resolve_secret(raw.get("api_key")) if raw.get("api_key") else None,
-        query=raw.get("query"),
-        dashboard_url=raw.get("dashboard_url"),
-        trace_url_template=raw.get("trace_url_template"),
-        options=dict(raw.get("options", {})) if raw.get("options") else {},
-    )
+    try:
+        return MonitoringConnector(
+            name=str(_required(raw, "name")),
+            connector_type=str(_required(raw, "type")).lower(),
+            endpoint=raw.get("endpoint"),
+            api_key=require_secret_reference(raw.get("api_key"), "monitoring connector api_key"),
+            query=raw.get("query"),
+            dashboard_url=raw.get("dashboard_url"),
+            trace_url_template=raw.get("trace_url_template"),
+            options=resolve_secret_references(dict(raw.get("options", {}))) if raw.get("options") else {},
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise ConfigError(str(exc)) from exc
 
 
 def _parse_database_connector(raw: dict[str, Any], base_dir: Path | None) -> DatabaseConnector:
-    return DatabaseConnector(
-        name=str(_required(raw, "name")),
-        connector_type=str(_required(raw, "type")).lower(),
-        source_file=_optional_path(raw.get("source_file"), base_dir),
-        connection_string=resolve_secret(raw.get("connection_string")) if raw.get("connection_string") else None,
-        options=dict(raw.get("options", {})) if raw.get("options") else {},
-    )
+    try:
+        return DatabaseConnector(
+            name=str(_required(raw, "name")),
+            connector_type=str(_required(raw, "type")).lower(),
+            source_file=_optional_path(raw.get("source_file"), base_dir),
+            connection_string=require_secret_reference(
+                raw.get("connection_string"),
+                "database connector connection_string",
+            ),
+            options=resolve_secret_references(dict(raw.get("options", {}))) if raw.get("options") else {},
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise ConfigError(str(exc)) from exc

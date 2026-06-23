@@ -9,7 +9,6 @@ const fields = {
   durationSeconds: document.querySelector("#durationSeconds"),
   p95Sla: document.querySelector("#p95Sla"),
   errorRate: document.querySelector("#errorRate"),
-  approveRisky: document.querySelector("#approveRisky"),
   configJson: document.querySelector("#configJson"),
   configState: document.querySelector("#configState"),
   engineNotice: document.querySelector("#engineNotice"),
@@ -28,13 +27,26 @@ const fields = {
   signupEmail: document.querySelector("#signupEmail"),
   signupPassword: document.querySelector("#signupPassword"),
   signupPasswordConfirm: document.querySelector("#signupPasswordConfirm"),
-  signupBtn: document.querySelector("#signupBtn")
+  signupBtn: document.querySelector("#signupBtn"),
+  signupToggle: document.querySelector("#signupToggle"),
+  signupIntro: document.querySelector("#signupIntro"),
+  signupNote: document.querySelector("#signupNote"),
+  approvalPanel: document.querySelector("#approvalPanel"),
+  approvalComment: document.querySelector("#approvalComment"),
+  requestApprovalBtn: document.querySelector("#requestApprovalBtn"),
+  refreshApprovalsBtn: document.querySelector("#refreshApprovalsBtn"),
+  approvalList: document.querySelector("#approvalList"),
+  riskyApprovalState: document.querySelector("#riskyApprovalState"),
+  auditPanel: document.querySelector("#auditPanel"),
+  refreshAuditBtn: document.querySelector("#refreshAuditBtn"),
+  auditList: document.querySelector("#auditList")
 };
 
 let mode = "builder";
 let currentConfig = null;
 let progressTimer = null;
-const auth = { currentUser: null };
+let currentApprovalId = "";
+const auth = { currentUser: null, signupEnabled: false, signupDomain: "" };
 
 async function loadSession() {
   try {
@@ -44,6 +56,8 @@ async function loadSession() {
     } else {
       const payload = await response.json();
       auth.currentUser = payload.authenticated ? payload : null;
+      auth.signupEnabled = Boolean(payload.signup_enabled);
+      auth.signupDomain = payload.signup_domain || "";
     }
   } catch (error) {
     auth.currentUser = null;
@@ -59,16 +73,26 @@ function updateAuthUI() {
   fields.userBadge.classList.toggle("hidden", !signedIn);
   if (signedIn) {
     fields.userBadge.textContent = `${auth.currentUser.username} (${auth.currentUser.role})`;
-    const canApprove = ["approver", "admin"].includes(auth.currentUser.role);
-    fields.approveRisky.disabled = !canApprove;
-    fields.approveRisky.parentElement.classList.toggle("muted", !canApprove);
-    if (!canApprove) {
-      fields.approveRisky.checked = false;
-    }
+    const canTest = ["tester", "approver", "admin"].includes(auth.currentUser.role);
+    fields.approvalPanel.classList.toggle("hidden", !canTest);
+    fields.auditPanel.classList.toggle("hidden", auth.currentUser.role !== "admin");
+    document.querySelector("#runBtn").disabled = !canTest;
+    fields.requestApprovalBtn.classList.toggle("hidden", !canTest);
+    loadApprovals();
+    loadRunHistory();
+    if (auth.currentUser.role === "admin") loadAudit();
   } else {
-    fields.approveRisky.disabled = true;
-    fields.approveRisky.checked = false;
+    fields.approvalPanel.classList.add("hidden");
+    fields.auditPanel.classList.add("hidden");
   }
+  fields.signupToggle.classList.toggle("hidden", signedIn || !auth.signupEnabled);
+  const domain = auth.signupDomain;
+  fields.signupIntro.textContent = domain
+    ? `Sign up with your @${domain} organization email.`
+    : "Self-service signup is disabled.";
+  fields.signupNote.textContent = domain
+    ? `Accounts are limited to @${domain} email addresses.`
+    : "Ask an administrator to provision your account.";
 }
 
 async function login() {
@@ -114,8 +138,8 @@ async function signup() {
     return;
   }
 
-  if (password.length < 6) {
-    showError("Password must be at least 6 characters long.");
+  if (password.length < 12) {
+    showError("Password must be at least 12 characters long.");
     return;
   }
 
@@ -175,6 +199,9 @@ document.querySelector("#refreshRunsBtn").addEventListener("click", loadRunHisto
 fields.loginBtn.addEventListener("click", login);
 fields.signupBtn.addEventListener("click", signup);
 fields.logoutBtn.addEventListener("click", logout);
+fields.requestApprovalBtn.addEventListener("click", requestApproval);
+fields.refreshApprovalsBtn.addEventListener("click", loadApprovals);
+fields.refreshAuditBtn.addEventListener("click", loadAudit);
 fields.toggleSignupBtn.addEventListener("click", () => toggleAuthForm("signup"));
 fields.toggleLoginBtn.addEventListener("click", () => toggleAuthForm("login"));
 fields.runSearch.addEventListener("input", debounce(loadRunHistory, 250));
@@ -182,10 +209,14 @@ fields.testEngine.addEventListener("change", () => {
   fields.engineNotice.classList.toggle("hidden", fields.testEngine.value === "synthetic");
   if (mode === "builder") writeConfig(buildBuilderConfig());
 });
-fields.configJson.addEventListener("input", () => setConfigState("Edited"));
+fields.configJson.addEventListener("input", () => {
+  clearSelectedApproval();
+  setConfigState("Edited");
+});
 
 for (const key of ["quickUrl", "applicationName", "releaseId", "environmentName", "testType", "testEngine", "concurrentUsers", "durationSeconds", "p95Sla", "errorRate"]) {
   fields[key].addEventListener("input", () => {
+    clearSelectedApproval();
     validateBuilder(false);
     if (mode === "builder") writeConfig(buildBuilderConfig());
   });
@@ -198,7 +229,6 @@ document.querySelectorAll(".result-tab").forEach((button) => {
 setDefaults();
 writeConfig(buildBuilderConfig());
 loadSession();
-loadRunHistory();
 
 function setDefaults() {
   fields.quickUrl.value = "https://example.com";
@@ -211,7 +241,6 @@ function setDefaults() {
   fields.durationSeconds.value = 30;
   fields.p95Sla.value = 1200;
   fields.errorRate.value = 0.5;
-  fields.approveRisky.checked = false;
 }
 
 function setMode(nextMode) {
@@ -231,7 +260,7 @@ async function loadSample() {
   populateFormFromConfig(currentConfig);
   writeConfig(currentConfig);
   setMode("json");
-  fields.approveRisky.checked = true;
+  clearSelectedApproval();
   setConfigState("Demo Loaded");
 }
 
@@ -269,7 +298,6 @@ function buildBuilderConfig() {
     environment: {
       name: fields.environmentName.value,
       base_url: url,
-      allow_risky_tests: false,
       max_concurrent_users: 1000,
       max_duration_seconds: 900
     },
@@ -317,7 +345,7 @@ function buildBuilderConfig() {
   };
 }
 
-function validateBuilder(showMessages = true) {
+function validateBuilder(showMessages = true, requireApproval = true) {
   const errors = [];
   const url = fields.quickUrl.value.trim();
   const users = Number(fields.concurrentUsers.value);
@@ -332,8 +360,8 @@ function validateBuilder(showMessages = true) {
   if (!Number.isFinite(users) || users < 1 || users > 1000) errors.push("Users must be between 1 and 1000.");
   if (!Number.isFinite(p95) || p95 < 100) errors.push("p95 SLA must be at least 100 ms.");
   if (!Number.isFinite(errorRate) || errorRate < 0 || errorRate > 100) errors.push("Error budget must be between 0 and 100%.");
-  if (["stress", "spike", "endurance"].includes(testType) && !fields.approveRisky.checked) {
-    errors.push("Risky test types need approval.");
+  if (requireApproval && ["stress", "spike", "endurance"].includes(testType) && !currentApprovalId) {
+    errors.push("Select an approved request before running a risky test.");
   }
 
   renderValidation(errors, showMessages);
@@ -378,10 +406,6 @@ async function runAssessment() {
     showError("Viewer role cannot start assessments. Contact an Administrator.");
     return;
   }
-  if (fields.approveRisky.checked && !["approver", "admin"].includes(role)) {
-    showError("Only Approver or Admin roles may authorize risky test runs.");
-    return;
-  }
   const errors = mode === "builder" ? validateBuilder(true) : [];
   if (errors.length) return;
   const config = mode === "builder" ? buildBuilderConfig() : parseConfigJson();
@@ -399,13 +423,15 @@ async function runAssessment() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         config,
-        approve_risky: fields.approveRisky.checked,
+        approval_id: currentApprovalId || null,
         use_k6: fields.testEngine.value === "k6"
       })
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Assessment failed.");
     await loadRunDetails(payload.run_id, payload);
+    clearSelectedApproval();
+    loadApprovals();
     setConfigState("Complete");
     loadRunHistory();
   } catch (error) {
@@ -415,6 +441,152 @@ async function runAssessment() {
   } finally {
     stopProgress();
     setRunning(false);
+  }
+}
+
+async function requestApproval() {
+  clearError();
+  if (!auth.currentUser || auth.currentUser.role === "viewer") {
+    showError("Tester, Approver, or Admin role is required to request approval.");
+    return;
+  }
+  const errors = mode === "builder" ? validateBuilder(true, false) : [];
+  if (errors.length) return;
+  const config = mode === "builder" ? buildBuilderConfig() : parseConfigJson();
+  if (!config) return;
+  if (!config.scenarios?.some((scenario) => ["stress", "spike", "endurance"].includes(scenario.test_type))) {
+    showError("Approval is only needed for stress, spike, or endurance scenarios.");
+    return;
+  }
+  try {
+    const response = await fetch("/api/approval-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config, comment: fields.approvalComment.value.trim() })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Approval request failed.");
+    fields.approvalComment.value = "";
+    clearSelectedApproval();
+    setConfigState("Approval Pending");
+    await loadApprovals();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+async function loadApprovals() {
+  if (!auth.currentUser) return;
+  try {
+    const response = await fetch("/api/approvals");
+    const approvals = await response.json();
+    if (!response.ok) throw new Error(approvals.error || "Could not load approvals.");
+    renderApprovals(approvals);
+  } catch (error) {
+    fields.approvalList.innerHTML = "";
+    fields.approvalList.appendChild(emptyLine(error.message));
+  }
+}
+
+function renderApprovals(approvals) {
+  fields.approvalList.innerHTML = "";
+  if (!approvals.length) {
+    fields.approvalList.appendChild(emptyLine("No approval requests."));
+    return;
+  }
+  approvals.slice(0, 30).forEach((approval) => {
+    const item = document.createElement("article");
+    item.className = "approval-card";
+    const canDecide = ["approver", "admin"].includes(auth.currentUser.role) && approval.status === "pending";
+    const canUse = approval.status === "approved" && approval.requested_by === auth.currentUser.username;
+    item.innerHTML = `
+      <div class="approval-header">
+        <strong>${escapeHtml(approval.application_name)} / ${escapeHtml(approval.release_id)}</strong>
+        <span class="status-pill ${approvalStatusClass(approval.status)}">${escapeHtml(titleCase(approval.status))}</span>
+      </div>
+      <p>${escapeHtml((approval.scenario_names || []).join(", "))}</p>
+      <small>Requested by ${escapeHtml(approval.requested_by)} for ${escapeHtml(approval.environment)}</small>
+      <div class="approval-buttons"></div>
+    `;
+    const actions = item.querySelector(".approval-buttons");
+    if (canUse) {
+      actions.appendChild(actionButton("Use Approval", () => selectApproval(approval)));
+    }
+    if (canDecide) {
+      actions.appendChild(actionButton("Approve", () => decideApproval(approval.approval_id, "approve"), "primary"));
+      actions.appendChild(actionButton("Reject", () => decideApproval(approval.approval_id, "reject")));
+    }
+    fields.approvalList.appendChild(item);
+  });
+}
+
+function actionButton(label, handler, variant = "secondary") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `button ${variant} small`;
+  button.textContent = label;
+  button.addEventListener("click", handler);
+  return button;
+}
+
+async function decideApproval(approvalId, decision) {
+  try {
+    const response = await fetch(`/api/${decision}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approval_id: approvalId, comment: fields.approvalComment.value.trim() })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || `Could not ${decision} request.`);
+    fields.approvalComment.value = "";
+    await loadApprovals();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+function selectApproval(approval) {
+  currentApprovalId = approval.approval_id;
+  fields.riskyApprovalState.textContent = `Approved by ${approval.approved_by}. This approval is one-time and only valid for the unchanged configuration.`;
+  fields.riskyApprovalState.classList.remove("hidden");
+  setConfigState("Approved");
+}
+
+function clearSelectedApproval() {
+  currentApprovalId = "";
+  fields.riskyApprovalState.textContent = "";
+  fields.riskyApprovalState.classList.add("hidden");
+}
+
+function approvalStatusClass(status) {
+  if (status === "approved") return "green";
+  if (status === "pending") return "amber";
+  return "red";
+}
+
+async function loadAudit() {
+  if (auth.currentUser?.role !== "admin") return;
+  try {
+    const response = await fetch("/api/audit");
+    const events = await response.json();
+    if (!response.ok) throw new Error(events.error || "Could not load audit trail.");
+    fields.auditList.innerHTML = "";
+    events.slice().reverse().slice(0, 50).forEach((event) => {
+      const item = document.createElement("article");
+      item.className = "approval-card";
+      item.innerHTML = `
+        <div class="approval-header">
+          <strong>${escapeHtml(event.event_type)}</strong>
+          <small>${escapeHtml(event.timestamp)}</small>
+        </div>
+        <p>${escapeHtml(event.username || "system")} (${escapeHtml(event.role || "n/a")})</p>
+        <small>${escapeHtml(JSON.stringify(event.details || {}))}</small>
+      `;
+      fields.auditList.appendChild(item);
+    });
+  } catch (error) {
+    fields.auditList.innerHTML = "";
+    fields.auditList.appendChild(emptyLine(error.message));
   }
 }
 
@@ -458,6 +630,7 @@ function stopProgress() {
 }
 
 async function loadRunHistory() {
+  if (!auth.currentUser) return;
   const q = encodeURIComponent(fields.runSearch.value.trim());
   const response = await fetch(`/api/runs${q ? `?q=${q}` : ""}`);
   const runs = await response.json();
@@ -547,6 +720,7 @@ function renderDownloads(artifacts) {
     baseline: "Baseline",
     backlog: "Backlog",
     readiness: "Readiness JSON",
+    gate: "Release Gate",
     raw: "Raw Results",
     connectors: "Connectors"
   };
@@ -857,7 +1031,8 @@ function clearError() {
 }
 
 function setRunning(isRunning) {
-  document.querySelector("#runBtn").disabled = isRunning;
+  const canTest = auth.currentUser && ["tester", "approver", "admin"].includes(auth.currentUser.role);
+  document.querySelector("#runBtn").disabled = isRunning || !canTest;
   document.querySelector("#loadSampleBtn").disabled = isRunning;
 }
 

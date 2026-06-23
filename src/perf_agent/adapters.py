@@ -89,10 +89,10 @@ class Guardrail:
                         f"Test execution is only allowed between {env.test_window_start} and {env.test_window_end}."
                     )
 
-        if scenario.requires_approval and not (approve_risky or env.allow_risky_tests):
+        if scenario.requires_approval and not approve_risky:
             raise ApprovalRequired(
                 f"Scenario '{scenario.name}' is a {scenario.test_type.value} test and needs approval. "
-                "Rerun with --approve-risky or set environment.allow_risky_tests=true."
+                "Use an authorized approval workflow or rerun the trusted CLI with --approve-risky."
             )
 
 

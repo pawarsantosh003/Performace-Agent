@@ -1,0 +1,26 @@
+[
+  {
+    "username": "viewer.user",
+    "password": "$secret:env:PERF_VIEWER_PASSWORD",
+    "role": "viewer",
+    "display_name": "Viewer User"
+  },
+  {
+    "username": "performance.tester",
+    "password": "$secret:env:PERF_TESTER_PASSWORD",
+    "role": "tester",
+    "display_name": "Performance Tester"
+  },
+  {
+    "username": "release.approver",
+    "password": "$secret:env:PERF_APPROVER_PASSWORD",
+    "role": "approver",
+    "display_name": "Release Approver"
+  },
+  {
+    "username": "platform.admin",
+    "password": "$secret:env:PERF_ADMIN_PASSWORD",
+    "role": "admin",
+    "display_name": "Platform Administrator"
+  }
+]

@@ -5,7 +5,6 @@
   "environment": {
     "name": "pre-prod",
     "base_url": "https://preprod.example.com",
-    "allow_risky_tests": true,
     "max_concurrent_users": 1000,
     "max_duration_seconds": 7200
   },

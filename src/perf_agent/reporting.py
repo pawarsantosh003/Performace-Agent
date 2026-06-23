@@ -17,19 +17,21 @@ class ReportWriter:
             "baseline": str(output_dir / "baseline.json"),
             "backlog": str(output_dir / "optimization_backlog.json"),
             "readiness": str(output_dir / "release_readiness.json"),
+            "gate": str(output_dir / "release_gate.json"),
             "readiness_summary": str(output_dir / "readiness_summary.md"),
             "raw_results": str(output_dir / "raw_results.json"),
             "connectors": str(output_dir / "connector_annotations.json"),
             "manifest": str(output_dir / "manifest.json"),
         }
+        run.artifacts = artifacts
         Path(artifacts["report"]).write_text(self._markdown(run), encoding="utf-8")
         Path(artifacts["baseline"]).write_text(json.dumps(_baseline(run), indent=2), encoding="utf-8")
         Path(artifacts["backlog"]).write_text(json.dumps([to_json(f) for f in run.findings], indent=2), encoding="utf-8")
         Path(artifacts["readiness"]).write_text(json.dumps(to_json(run.readiness), indent=2), encoding="utf-8")
+        Path(artifacts["gate"]).write_text(json.dumps(_gate_result(run), indent=2), encoding="utf-8")
         Path(artifacts["raw_results"]).write_text(json.dumps(to_json(run.scenario_results), indent=2), encoding="utf-8")
         Path(artifacts["connectors"]).write_text(json.dumps(to_json(run.connector_annotations), indent=2), encoding="utf-8")
         Path(artifacts["manifest"]).write_text(json.dumps(_manifest(run), indent=2), encoding="utf-8")
-        run.artifacts = artifacts
         Path(artifacts["readiness_summary"]).write_text(self._readiness_summary(run), encoding="utf-8")
         return artifacts
 
@@ -307,6 +309,36 @@ def _manifest(run: AgentRun) -> dict[str, Any]:
         "connector_annotation_count": sum(len(v) for v in run.connector_annotations.values()) if run.connector_annotations else 0,
         "failing_endpoint_count": len(_failing_endpoints(run)),
         "database_finding_count": len([finding for finding in run.findings if finding.category == "database"]),
+        "gate": _gate_result(run),
+    }
+
+
+def _gate_result(run: AgentRun) -> dict[str, Any]:
+    readiness = run.readiness
+    assert readiness is not None
+    decision = {
+        "green": "pass",
+        "amber": "warn",
+        "red": "block",
+        "blocked": "block",
+    }[readiness.status.value]
+    exit_code = {"pass": 0, "warn": 1, "block": 2}[decision]
+    return {
+        "run_id": run.run_id,
+        "application_name": run.config.application_name,
+        "release_id": run.config.release_id,
+        "environment": run.config.environment.name,
+        "score": readiness.score,
+        "status": readiness.status.value,
+        "decision": decision,
+        "exit_code": exit_code,
+        "blockers": readiness.blockers,
+        "policy": {
+            "green": "score >= 90 and no critical blockers",
+            "amber": "75 <= score < 90 and no critical blockers",
+            "red": "60 <= score < 75 and no critical blockers",
+            "blocked": "critical blocker present or score < 60",
+        },
     }
 
 

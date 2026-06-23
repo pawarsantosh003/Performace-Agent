@@ -5,9 +5,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .adapters import Guardrail, MetricsLoader, executor_for
+from .adapters import ApprovalRequired, Guardrail, MetricsLoader, executor_for
 from .analysis import PerformanceAnalyzer
 from .ai import AIReasoningEngine
+from .governance import ApprovalRecord, config_fingerprint, risky_scenario_names
 from .models import AgentConfig, AgentRun, TestEngine
 from .reporting import ReportWriter
 
@@ -21,7 +22,18 @@ class PerformanceAgent:
         self.ai_engine = AIReasoningEngine()
         self.report_writer = ReportWriter()
 
-    def run(self, config: AgentConfig, output_root: str | Path, approve_risky: bool = False) -> AgentRun:
+    def run(
+        self,
+        config: AgentConfig,
+        output_root: str | Path,
+        approval: ApprovalRecord | None = None,
+    ) -> AgentRun:
+        risky_scenarios = risky_scenario_names(config)
+        if risky_scenarios:
+            if not approval or approval.status != "approved":
+                raise ApprovalRequired("Risky scenarios require an authorized approved record.")
+            if approval.config_hash != config_fingerprint(config):
+                raise ApprovalRequired("Risky test configuration does not match its approval.")
         run_id = _run_id(config)
         output_dir = Path(output_root) / run_id
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -32,7 +44,7 @@ class PerformanceAgent:
         agent_run.connector_annotations = self.metrics_loader.load_monitoring_annotations(config, run_id)
 
         for index, scenario in enumerate(config.scenarios):
-            self.guardrail.validate(config, scenario, approve_risky=approve_risky)
+            self.guardrail.validate(config, scenario, approve_risky=bool(approval))
             engine = self.engine_override or config.test_engine
             result = executor_for(engine).execute(config, scenario, run_id=run_id, output_dir=output_dir)
             if shared_infra:
